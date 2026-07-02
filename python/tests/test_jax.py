@@ -2314,7 +2314,11 @@ def test_inverse_map_rhs_round_trip_pounce_91():
 
     y0 = float(y_of_s(0.0)[0])
     theta0 = jnp.array([y0 + 0.1 * y0 ** 3])       # x*(θ0) = y0
-    TH = _rk4(rhs, theta0, n_steps=160)            # (K, 1)
+    # Every RK4 stage runs a host-dispatched pounce solve, so keep the step
+    # count as low as the analytic tolerance allows: RK4 error is O(h⁴) ≈
+    # (1/48)⁴ ≈ 2e-7 here, comfortably under the 1e-5 assert below (pounce#91;
+    # kept small for CI wall-time — do not bump without re-checking the margin).
+    TH = _rk4(rhs, theta0, n_steps=48)             # (K, 1)
 
     S = np.linspace(0.0, 1.0, TH.shape[0])
     ys = 0.5 + 0.3 * np.sin(2 * np.pi * S)
@@ -2462,8 +2466,11 @@ def test_inverse_map_rhs_warm_matches_cold_pounce_91():
     y0 = float(y_of_s(0.0)[0])
     theta0 = jnp.array([y0 + 0.1 * y0 ** 3])
 
-    TH_cold = _rk4(inverse_map_rhs(jp, dy_ds, warm=False), theta0, n_steps=120)
-    TH_warm = _rk4(inverse_map_rhs(jp, dy_ds, warm=True), theta0, n_steps=120)
+    # This test compares cold vs warm at *identical* steps, so its agreement
+    # does not depend on integration accuracy — a short path suffices, and each
+    # RK4 stage is a host solve, so keep the step count low for CI wall-time.
+    TH_cold = _rk4(inverse_map_rhs(jp, dy_ds, warm=False), theta0, n_steps=30)
+    TH_warm = _rk4(inverse_map_rhs(jp, dy_ds, warm=True), theta0, n_steps=30)
     assert float(np.max(np.abs(TH_cold - TH_warm))) < 1e-6
 
     # Still jittable with the warm cache in the loop.
@@ -2502,9 +2509,11 @@ def test_inverse_map_rhs_nonidentity_output_pounce_91():
     y0 = np.array([0.3, -0.2])
     y1 = np.array([1.0, 0.4])
 
-    # Straight-line output path y(s) = y0 + s (y1 − y0) ⇒ dy/ds constant.
+    # Straight-line output path y(s) = y0 + s (y1 − y0) ⇒ dy/ds constant, and
+    # the inverse map A⁻¹ is constant too, so θ'(s) is constant and RK4 is exact
+    # at any step count — keep it low (each stage is a host solve) for CI.
     rhs = inverse_map_rhs(jp, jnp.asarray(y1 - y0), output=output)
-    TH = _rk4(rhs, jnp.asarray(Ainv @ y0), n_steps=80)        # (K, 2)
+    TH = _rk4(rhs, jnp.asarray(Ainv @ y0), n_steps=20)        # (K, 2)
 
     S = np.linspace(0.0, 1.0, TH.shape[0])
     ys = y0[None, :] + S[:, None] * (y1 - y0)                 # (K, 2)
