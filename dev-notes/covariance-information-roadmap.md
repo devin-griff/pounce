@@ -18,8 +18,7 @@ it through `rh_eigendecomp`. The parameter covariance is a downstream step on
 top of it, invert and scale. The covariance-first tools sit a level up, at the
 estimation frontend: Pyomo's `parmest` inverts the reduced Hessian to report a
 covariance, and scipy's `curve_fit` returns the covariance (`pcov`) in the
-Gauss-Newton form. The information form is the natural one for an
-information-form arrival cost.
+Gauss-Newton form.
 
 ## Benefit hypothesis
 
@@ -36,8 +35,7 @@ together:
 
 The reduced Hessian and the covariance recipe are established, and pounce ships
 them in its core, QP, and `curve_fit` interfaces (see Related reduced-Hessian
-work below). This is an interface contribution on the pyomo side, layered on
-them.
+work below).
 
 ## Where we are
 
@@ -104,9 +102,11 @@ never inverted first and then restricted. The embedding differs.
 `covariance()` embeds a pinned parameter as a zero row, reading as zero
 variance; the same zeros in an information matrix read as zero information,
 the opposite claim. So `information()` returns the free block plus, for each
-pinned direction, the retained row with `Sigma` removed: the finite weight,
-describing how the objective curves as that variable leaves its bound, and
-computable only from the held factor. Item 4 gives the per-regime dispositions.
+pinned direction, the reduction onto that direction with `Sigma` off its
+diagonal: not the diagonal entry, but the Schur complement eliminating the free
+variables, which is the finite weight describing how the objective curves as
+that variable leaves its bound. It is computable only from the held factor.
+Item 4 gives the per-regime dispositions.
 
 It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`).
 `Sigma` is rank-structured onto the deleted directions, so the projection
@@ -160,12 +160,15 @@ rather than marginalizes.
 **4. Joint activity classification.** `covariance()` and `information()`
 classify a bound as active on slack **and** multiplier, with tolerances tied to
 `mu` (compare `s` to `sqrt(mu)`, and `s*z` to `mu`), giving three outcomes.
-The barrier's diagonal `Sigma_i = z_i / s_i = mu / s_i^2` separates them:
+The barrier's diagonal separates them. It sums over both bounds,
+`Sigma_i = z^L_i / s^L_i + z^U_i / s^U_i`, but a variable is active at one at
+most, and the slack side contributes `mu / s^2`, so the regime is set by the
+active bound alone:
 
 | regime | `s` | `z` | `Sigma` as `mu -> 0` | `covariance()` returns | `information()` returns |
 |---|---|---|---|---|---|
 | inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` | in the free block | in the free block |
-| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> inf` | a zero row | its retained row less `Sigma`, outside the block |
+| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> inf` | a zero row | outside the block, reduced onto with `Sigma` off |
 | weakly active | `-> 0` | `-> 0` | finite, `O(1)` | free block, `Sigma` off | free block, `Sigma` off |
 
 The classification is returned with the matrix in every regime, since which
@@ -200,8 +203,8 @@ different numbers than v0.9 returns.
   different.
 - A bound-active fitted variable: the free block matches the same model solved
   with that variable fixed (a bounds-to-equalities substitution, so LICQ is
-  assumed), and the pinned direction reports its retained-row value with the
-  activity classification.
+  assumed), and the pinned direction reports the reduction onto it with `Sigma`
+  off, with the activity classification.
 - Refining the solver's `mu` moves the free-block numbers by `O(mu)` and no
   more. Necessary, not sufficient: the weakly-active case is `mu`-invariant and
   barrier-inflated at once, so it pairs with the slack-and-multiplier
