@@ -87,8 +87,14 @@ The motivating consumer is moving horizon estimation. Its information-form
 arrival cost is `Gamma(x0) = 0.5 (x0 - xhat)^T Pi^{-1} (x0 - xhat)`, where the
 weighting `Pi^{-1}` is the reduced Hessian marginalized onto the arrival
 state, the Lagrangian information, not the covariance. That un-inverted,
-per-block object is what the roadmap below adds; the concrete per-window loop
-is in the MHE section.
+per-block object is what the roadmap below adds.
+
+The estimator solves with `retain_kkt()` set and then reduces: onto the arrival
+state, one time slice, for `Pi^{-1}`, and onto the parameter block for their
+covariance. Those two calls off one factor are the whole demand this note has
+to meet. Which problem it reduces is the estimator's, and it is a one-step
+subproblem rather than the whole window, since overlapping windows would
+otherwise count the overlap's measurements twice.
 
 ## Roadmap
 
@@ -239,11 +245,16 @@ What cannot carry over is the embedding. `covariance()` embeds a pinned
 parameter as a zero row and column, which reads as zero variance and is
 correct for something the active set holds fixed. The same zeros in an
 information matrix read as zero information, that is, infinite variance: the
-same array making the opposite claim. So `information()` returns the reduced
-Hessian over the free block and reports the pinned directions as active-set
-metadata, not as matrix entries. A pinned direction has no finite information
-to report; conditional on the bound staying active it is unbounded, and
-unbounded is not something a caller can multiply.
+same array making the opposite claim.
+
+So `information()` returns the free block and reports the pinned directions
+separately, with the activity classification. Three weights are available for a
+pinned direction: zero, the barrier's `z^2/mu`, and the retained row with
+`Sigma` removed. Only the third is finite, and it is the one that answers the
+question a consumer actually has, how the objective curves as that variable
+moves off its bound into the interior. It is computable only from the held
+factor, so discarding it is a loss the caller cannot undo, and it is what
+`information()` reports.
 
 Skipping the projection produces the artifact directly: the bound-active entry
 of the full `(W + Sigma)^{-1}` is a variance collapsing to zero, a constraint
@@ -270,39 +281,6 @@ the active set is reported alongside the matrix, and the block's numbers move
 with `mu` on the way there. The reduction marginalizes over free directions and
 conditions on bound-active ones: independent of the declarations, dependent on
 the active set.
-
-## MHE, the motivating consumer
-
-Per window the estimator solves its NLP once with `retain_kkt()` set, then
-reduces onto the arrival state for the next window's `Pi^{-1}` and onto the
-parameter block for their covariance. The arrival block is the components of
-the state that become the next window's start, one time slice, not the whole
-window.
-
-The reduction is the mechanism; which problem it is applied to is the
-estimator's. The arrival-cost update is one step,
-
-    Gamma_{k+1}(z) = min over the dropped state of
-                     [ Gamma_k(x_dropped) + the one stage cost leaving the window ]
-
-subject to the arrival state equalling `z`, so the consumer builds that
-one-step subproblem and reduces it. Windows overlap in `N-1` points, so
-reducing the entire solved window instead folds the overlap's stage costs into
-`Pi^{-1}` while those same residuals stay live in the next window's objective,
-counting every measurement in the overlap twice and compounding with the
-horizon.
-
-Whether the arrival cost carries parameter uncertainty (marginal) or treats
-parameters as known (conditional) is a modeling choice, set by whether the
-parameters are in the block.
-
-A bound-active arrival state is where the reporting convention earns its keep.
-Three weights are available for a pinned direction: zero, the barrier's
-`z^2/mu`, and the retained row with `Sigma` removed. Only the third is finite
-and reflects how the past cost curves as the arrival state moves off the bound,
-and it is computable only inside pounce, so `information()` exposes it
-alongside the activity classification and the estimator decides what its
-arrival cost does with it.
 
 ## Scope boundary: mechanism in pounce, policy in the caller
 
