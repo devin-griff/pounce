@@ -103,11 +103,9 @@ and then restricted. The embedding differs.
 `covariance()` embeds a pinned parameter as a zero row, reading as zero
 variance; the same zeros in an information matrix read as zero information,
 the opposite claim. So `information()` returns the free block plus, for each
-pinned direction, the reduction onto that direction with `Σ` off its
-diagonal: not the diagonal entry, but the Schur complement eliminating the free
-variables, which is the finite weight describing how the objective curves as
-that variable leaves its bound. It is computable only from the held factor.
-Item 4 gives the per-regime dispositions.
+pinned direction, the reduction onto it, the finite weight describing how the
+objective curves as that variable leaves its bound, computable only from the
+held factor. Item 4 gives the expression and the per-regime dispositions.
 
 It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`).
 `Σ` is rank-structured onto the deleted directions, so the projection
@@ -160,20 +158,27 @@ rather than marginalizes.
 
 **4. Joint activity classification.** `covariance()` and `information()`
 classify a bound as active on slack **and** multiplier, with tolerances tied to
-`μ` (compare `s` to `sqrt(μ)`, and `s·z` to `μ`), giving three outcomes.
-The barrier's diagonal separates them. It sums over both bounds,
-`Σ_i = z^L_i/s^L_i + z^U_i/s^U_i`, but a variable is active at one at
-most, and the slack side contributes `μ/s²`, so the regime is set by the
-active bound alone. Wherever `Σ` is not `O(μ)` it comes off the
-information's diagonal before anything is computed from it, including the
-inversion behind a variance; the table writes that as `Σ` off. The regime
-of a fitted variable's bound then decides what each accessor gives for it:
+`μ` (compare `s` to `sqrt(μ)`, and `s·z` to `μ`). The barrier's diagonal is
+what makes the multiplier necessary. It sums over both bounds,
+`Σ_i = z^L_i/s^L_i + z^U_i/s^U_i`, but a variable is active at one at most and
+the slack side contributes `μ/s²`, so the active bound sets the regime.
 
-| bound regime | `s` | `z` | `Σ` as `μ → 0` | `covariance()` gives | `information()` gives |
-|---|---|---|---|---|---|
-| inactive | `O(1)` | `→ 0` | `μ/s^2 → 0` | its variance, from the free block | its free-block row |
-| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | a zero row | its reduction with `Σ` off, separately |
-| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | its variance, `Σ` off | its free-block row, `Σ` off |
+Write `W` for the primal Hessian block the held factor carries and `H = W − Σ`
+for the Lagrangian one, `F` for the free directions and `A` for the pinned. For
+a fitted variable `i`, with the `2σ²` scale on the covariance side omitted:
+
+| bound regime | `s` | `z` | `Σ` as `μ → 0` | `i` in | `covariance()` | `information()` |
+|---|---|---|---|---|---|---|
+| inactive | `O(1)` | `→ 0` | `μ/s² → 0` | `F` | `(H_FF⁻¹)_ii` | `H_iF` |
+| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | `A` | `0` | `H_ii − H_iF H_FF⁻¹ H_Fi` |
+| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | `F` | `(H_FF⁻¹)_ii` | `H_iF` |
+
+Three regimes, two dispositions: the first and third rows agree, so weakly
+active is not a third treatment but the case a slack-only test misfiles into
+`A`. `Σ` comes off in every row, since that is what makes `H` the Lagrangian
+Hessian rather than the barrier one; the `Σ` column is what skipping that
+subtraction would cost, `O(μ)` and harmless when inactive, a factor when weakly
+active, unbounded when pinned.
 
 The classification is returned with the matrix in every regime, since which
 side of a tolerance a variable falls on is not stable.
@@ -207,8 +212,8 @@ different numbers than v0.9 returns.
   different.
 - A bound-active fitted variable: the free block matches the same model solved
   with that variable fixed (a bounds-to-equalities substitution, so LICQ is
-  assumed), and the pinned direction reports the reduction onto it with `Σ`
-  off, with the activity classification.
+  assumed), and the pinned direction reports `H_ii − H_iF H_FF⁻¹ H_Fi` with the
+  activity classification.
 - Refining the solver's `μ` moves the free-block numbers by `O(μ)` and no
   more. Necessary, not sufficient: the weakly-active case is `μ`-invariant and
   barrier-inflated at once, so it pairs with the slack-and-multiplier
