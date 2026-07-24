@@ -262,21 +262,6 @@ with `mu` on the way there. The reduction marginalizes over free directions and
 conditions on bound-active ones: independent of the declarations, dependent on
 the active set.
 
-## Scope boundary: mechanism in pounce, policy in the caller
-
-`information()`, `covariance()`, `wrt=`, and `retain_kkt()` are mechanisms:
-stateless queries against the held factorization. What a consumer does with the
-numbers is policy and belongs downstream, the same split the active-set
-sensitivity roadmap draws. Which block to ask about, how to build the
-subproblem being reduced, what an arrival cost weights, and what to do when the
-active set churns between windows are the estimator's. The MHE material above
-is motivation for the mechanism and a check that the mechanism suffices, not a
-specification of the estimator.
-
-Reporting is the one part of the boundary that falls to pounce, since an
-accessor that discards a number the caller cannot recompute has decided policy
-by omission. Hence the pinned-direction convention above.
-
 ## Scope and compatibility
 
 pyomo-pounce only. All three items are additive to v0.9: `information()` is
