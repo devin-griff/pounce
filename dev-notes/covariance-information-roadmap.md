@@ -120,12 +120,19 @@ handling is in Active bounds below.
 variables, off the held factor, post-solve. The factor captured at the
 solution covers every free variable, so the block is a call argument, not a
 fixed declaration. `declare_fitted` becomes the default block when `wrt=` is
-omitted, which keeps `covariance(model)` behaving exactly as in v0.9. Each
-call reduces onto its own argument, so one solve serves as many blocks as
-you ask about. The block, whether declared or passed to `wrt=`, accepts a
-slice (`m.x[t, :]`) or a `(Var, time)` pair, not just a hand-listed VarData
-set, so an MHE arrival state at one time point is one call rather than an
-enumeration.
+omitted, which keeps `covariance(model)` behaving exactly as in v0.9. The
+block, whether declared or passed to `wrt=`, accepts a slice (`m.x[t, :]`) or
+a `(Var, time)` pair, not just a hand-listed VarData set, so an MHE arrival
+state at one time point is one call rather than an enumeration.
+
+Each call re-reduces onto its own argument rather than slicing a joint
+reduction over a larger set, so one solve serves as many blocks as you ask
+about. The distinction is not cosmetic: slicing a covariance marginalizes,
+slicing an information matrix conditions. A sliced implementation would return
+the information conditional on everything outside the block being held fixed,
+where the caller asked for the marginal that carries its uncertainty, and
+nothing in the result would look wrong. Reducing per call gives the marginal
+directly, and the answer does not depend on what else was declared.
 
 **3. `retain_kkt()`, a factor-retention switch decoupled from
 declarations.** The solve factors the KKT to solve the NLP; the only
@@ -168,27 +175,6 @@ solve. It just carries no default block, so a bare `covariance(model)` errors,
 exactly the `retain_kkt()`-only row. The block `T` then comes out conditional
 on the pinned parameter, since fixing an input conditions rather than
 marginalizes.
-
-## Marginal versus conditional: the one semantic to get right
-
-Each call reduces onto its argument, and that yields the block's
-**marginal**: everything not in the block, other states, parameters, is
-integrated out through the KKT reduction. This is what the arrival cost
-wants.
-
-The trap is the asymmetry between the two objects. Slicing a covariance
-gives a marginal; slicing an information matrix gives a **conditional**. So
-`information(wrt=T)` must re-reduce onto `T`, not slice a joint reduction
-over some larger set. If it sliced, the arrival-state block of a joint
-`{state, params}` information would be the information conditional on the
-parameters held fixed, not the marginal that carries their uncertainty.
-Making `wrt=` mean "reduce onto this" gives the marginal directly, and the
-answer does not depend on what else was declared.
-
-A useful consequence: `information(wrt=arrival_block)` marginalizes the
-parameters for free, because they are simply not in the block. You reach for
-the conditional only by deliberately putting the parameters in the block and
-slicing.
 
 ## Active bounds
 
