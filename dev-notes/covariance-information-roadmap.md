@@ -162,10 +162,10 @@ classify a bound as active on slack **and** multiplier, with tolerances tied to
 `mu` (compare `s` to `sqrt(mu)`, and `s*z` to `mu`), giving three outcomes.
 The barrier's diagonal `Sigma_i = z_i / s_i = mu / s_i^2` separates them:
 
-| regime | slack `s` | multiplier `z` | `Sigma` as `mu -> 0` | reported as |
+| regime | slack `s` | multiplier `z` | `Sigma` as `mu -> 0` | what is returned |
 |---|---|---|---|---|
 | inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` | in the free block, unadjusted |
-| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> infinity` | out of the free block, its retained row less `Sigma` |
+| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> infinity` | outside the free block, its retained row less `Sigma` |
 | weakly active | `-> 0` | `-> 0` | finite, `O(1)` | in the free block, its diagonal less `Sigma` |
 
 `Sigma` comes off in the last two rows for the same reason and by the same
