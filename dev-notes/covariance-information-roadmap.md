@@ -164,14 +164,14 @@ classify a bound as active on slack **and** multiplier, with tolerances tied to
 The barrier's diagonal separates them. It sums over both bounds,
 `Sigma_i = z^L_i / s^L_i + z^U_i / s^U_i`, but a variable is active at one at
 most, and the slack side contributes `mu / s^2`, so the regime is set by the
-active bound alone. The regime of a fitted variable's bound decides where that
-variable's row lands in each matrix:
+active bound alone. The regime of a fitted variable's bound decides what each
+accessor gives for that variable:
 
-| bound regime | `s` | `z` | `Sigma` as `mu -> 0` | its `covariance()` row | its `information()` row |
+| bound regime | `s` | `z` | `Sigma` as `mu -> 0` | `covariance()` gives | `information()` gives |
 |---|---|---|---|---|---|
-| inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` | in the free block | in the free block |
-| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> inf` | zero | outside the free block: its reduction with `Sigma` off |
-| weakly active | `-> 0` | `-> 0` | finite, `O(1)` | in the free block, `Sigma` off | in the free block, `Sigma` off |
+| inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` | its variance, from the free block | its free-block row |
+| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> inf` | a zero row | its reduction with `Sigma` off, separately |
+| weakly active | `-> 0` | `-> 0` | finite, `O(1)` | its variance, `Sigma` off | its free-block row, `Sigma` off |
 
 The classification is returned with the matrix in every regime, since which
 side of a tolerance a variable falls on is not stable.
