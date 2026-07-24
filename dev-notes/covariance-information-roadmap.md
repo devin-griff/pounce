@@ -18,18 +18,13 @@ it through `rh_eigendecomp`. The parameter covariance is a downstream step on
 top of it, invert and scale. The covariance-first tools sit a level up, at the
 estimation frontend: Pyomo's `parmest` inverts the reduced Hessian to report a
 covariance, and scipy's `curve_fit` returns the covariance (`pcov`) in the
-Gauss-Newton form. So across the field the un-inverted information matrix is
-not the rare quantity but the native engine output, with the covariance
-derived from it. The information form is the natural one for an
+Gauss-Newton form. The information form is the natural one for an
 information-form arrival cost.
 
 ## Benefit hypothesis
 
-The contribution is not the reduced Hessian or the covariance recipe. Both
-are established, and pounce already ships them in its core, QP, and
-`curve_fit` interfaces (see Related reduced-Hessian work below). It is two
-things the
-pyomo-pounce interface lacks and that no pounce interface offers together:
+Two things the pyomo-pounce interface lacks, which no pounce interface offers
+together:
 
 - an `information()` accessor consistent with `covariance()` and the core's
   natural-units reduced Hessian, so a Pyomo model gets the un-inverted
@@ -39,8 +34,10 @@ pyomo-pounce interface lacks and that no pounce interface offers together:
   one-solve-two-blocks flow the MHE arrival cost needs, with `retain_kkt()`
   as the declaration-free enabler.
 
-So this is an interface and ergonomics contribution on the pyomo side,
-layered on the core's existing reduced Hessian, not new numerics.
+The reduced Hessian and the covariance recipe are established, and pounce ships
+them in its core, QP, and `curve_fit` interfaces (see Related reduced-Hessian
+work below). This is an interface contribution on the pyomo side, layered on
+them.
 
 ## Where we are
 
@@ -75,11 +72,6 @@ pounce already surfaces the reduced Hessian outside pyomo-pounce. The core
 `pounce.curve_fit` is the scipy-style covariance frontend for callable models,
 of which `covariance()` is the Pyomo-model sibling.
 
-So the object and its natural-units convention already exist in pounce. This
-roadmap brings them to the pyomo-pounce interface, which today exposes only
-`covariance()`, the inverse, over a fixed declared set, with no reduced-Hessian
-accessor and no per-call block.
-
 ## The MHE arrival cost
 
 The motivating consumer is moving horizon estimation. Its information-form
@@ -87,13 +79,6 @@ arrival cost is `Gamma(x0) = 0.5 (x0 - xhat)^T Pi^{-1} (x0 - xhat)`, where the
 weighting `Pi^{-1}` is the reduced Hessian marginalized onto the arrival
 state, the Lagrangian information, not the covariance. That un-inverted,
 per-block object is what the roadmap below adds.
-
-The estimator solves with `retain_kkt()` set and then reduces: onto the arrival
-state, one time slice, for `Pi^{-1}`, and onto the parameter block for their
-covariance. Those two calls off one factor are the whole demand this note has
-to meet. Which problem it reduces is the estimator's, and it is a one-step
-subproblem rather than the whole window, since overlapping windows would
-otherwise count the overlap's measurements twice.
 
 ## Roadmap
 
@@ -151,27 +136,13 @@ bound rather than the marginal over it. The active set is returned with the
 matrix, and the block's numbers move with `mu` on the way there.
 
 **3. `retain_kkt()`, a factor-retention switch decoupled from
-declarations.** The solve factors the KKT to solve the NLP; the only
-question is whether that factor is kept for post-solve queries. Today it is
-kept whenever a declaration is present (`declare_sens_param`,
-`declare_fitted`, or `declare_residual`). Item 2 lets the block move to a
-call argument, so a caller may want no declaration at all. `retain_kkt()`
-keeps the factor without committing to a block, param, or residual. It
-defaults off, so a solve with no sensitivity pays nothing.
-
-`retain_kkt()` is not specific to this surface. Keeping the factor is the
-substrate every sensitivity feature rests on, and `gradient()` and
-`estimate()` already get it as a side effect of the `declare_sens_param`
-they require, so they never call `retain_kkt()` and it has no user-facing
-effect on them. The only flow that needs a declaration-free retain is
-`covariance` / `information` driven purely by `wrt=`.
-
-`wrt=` itself is not gated by `retain_kkt()`. It needs the factor kept, and
-`declare_fitted` already keeps it, so `wrt=` works with `declare_fitted`
-alone. `retain_kkt()` earns its place only when you want the factor kept
-with no default block at all: the declaration-free MHE case, where the
-arrival state and the parameters are each queried by `wrt=` and neither is a
-default.
+declarations.** The solve factors the KKT to solve the NLP; the only question
+is whether that factor is kept for post-solve queries. Today any declaration
+keeps it (`declare_sens_param`, `declare_fitted`, or `declare_residual`).
+`retain_kkt()` keeps it with no declaration at all, which is what item 2's
+declaration-free flow needs: the MHE case, where the arrival state and the
+parameters are each queried by `wrt=` and neither is a default. It defaults
+off, so a solve with no sensitivity pays nothing.
 
 | setup | factor kept | `covariance(model)` | `covariance(model, wrt=T)` |
 |---|---|---|---|
@@ -180,17 +151,12 @@ default.
 | `retain_kkt()` only | yes | error, no default | over T |
 | `retain_kkt()` + `declare_fitted(S)` | yes | over S | over T |
 
-The columns show `covariance()` for concreteness; `information()` follows the
-same rows, since factor retention and the default block are accessor-agnostic.
-
-Any declaration keeps the factor, not only `declare_fitted`, so `retain_kkt()`
-is needed only when nothing at all is declared. In particular
-`declare_sens_param` alone (no `declare_fitted`, no `retain_kkt()`) does
-support `covariance(model, wrt=T)` and `information(model, wrt=T)` off the same
-solve. It just carries no default block, so a bare `covariance(model)` errors,
-exactly the `retain_kkt()`-only row. The block `T` then comes out conditional
-on the pinned parameter, since fixing an input conditions rather than
-marginalizes.
+The columns show `covariance()`; `information()` follows the same rows, since
+factor retention and the default block are accessor-agnostic. `gradient()` and
+`estimate()` are unaffected, since the `declare_sens_param` they require
+already keeps the factor. A block queried under that declaration alone comes
+out conditional on the pinned parameter, since fixing an input conditions
+rather than marginalizes.
 
 **4. Joint activity classification.** Both accessors classify a bound as active
 on slack **and** multiplier, with tolerances tied to `mu` (compare `s` to
@@ -246,8 +212,9 @@ rushed into v0.9.
   classification. A block conditioned on a bound-active variable outside it
   does move with `mu`, which is correct.
 - A weakly-active fitted variable (slack and multiplier both near zero) is
-  flagged, not classified free (carrying `2q`) or pinned (dropping finite
-  information), and the flag survives a sweep in `mu`.
+  flagged, not classified free (which inflates its block by the barrier term)
+  or pinned (which drops finite information), and the flag survives a sweep in
+  `mu`.
 - An indefinite Lagrangian free block returns the settled outcome, refusal or a
   Gauss-Newton fallback, not a matrix that makes a downstream quadratic
   unbounded below.
