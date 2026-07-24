@@ -125,14 +125,8 @@ block, whether declared or passed to `wrt=`, accepts a slice (`m.x[t, :]`) or
 a `(Var, time)` pair, not just a hand-listed VarData set, so an MHE arrival
 state at one time point is one call rather than an enumeration.
 
-Each call re-reduces onto its own argument rather than slicing a joint
-reduction over a larger set, so one solve serves as many blocks as you ask
-about. The distinction is not cosmetic: slicing a covariance marginalizes,
-slicing an information matrix conditions. A sliced implementation would return
-the information conditional on everything outside the block being held fixed,
-where the caller asked for the marginal that carries its uncertainty, and
-nothing in the result would look wrong. Reducing per call gives the marginal
-directly, and the answer does not depend on what else was declared.
+Each call re-reduces onto its own argument, giving that block's marginal, so
+one solve serves as many blocks as you ask about.
 
 **3. `retain_kkt()`, a factor-retention switch decoupled from
 declarations.** The solve factors the KKT to solve the NLP; the only
