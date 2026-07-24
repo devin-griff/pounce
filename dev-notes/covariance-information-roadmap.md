@@ -100,7 +100,8 @@ rather than by inverting the covariance. Numerically it equals
 trip and stays well-scaled in the poorly-identified directions. Same
 `hessian=` selector: Lagrangian (default, the exact reduced Hessian, what
 the information-form arrival cost wants) and Gauss-Newton (PSD). Same
-bound-projection and scaling conventions as `covariance()`.
+scaling conventions as `covariance()`; the bound handling is shared only in
+part, see Active bounds below.
 
 **2. `wrt=` block selection on both.** `covariance(model, wrt=block)` and
 `information(model, wrt=block)` reduce onto the given block, any free
@@ -177,6 +178,36 @@ parameters for free, because they are simply not in the block. You reach for
 the conditional only by deliberately putting the parameters in the block and
 slicing.
 
+## Active bounds: the projection is shared, the embedding is not
+
+A fitted variable sitting at one of its bounds at the optimum is projected
+out: both accessors work in the free (off-bound) directions. `covariance()`
+restricts the information matrix to the free block and inverts that, rather
+than inverting first and restricting, which is the construction it already
+ships. `information()` restricts the same way.
+
+What cannot carry over is the embedding. `covariance()` embeds a pinned
+parameter as a zero row and column, which reads as zero variance and is
+correct for something the active set holds fixed. The same zeros in an
+information matrix read as zero information, that is, infinite variance: the
+same array making the opposite claim. So `information()` returns the reduced
+Hessian over the free block and reports the pinned directions as active-set
+metadata, not as matrix entries. A pinned direction has no finite information
+to report; conditional on the bound staying active it is unbounded, and
+unbounded is not something a caller can multiply.
+
+The interior-point machinery makes this sharper. The barrier adds a diagonal
+`Sigma_i = z_i / s_i = mu / s_i^2` to the primal Hessian, which for a
+strongly active bound grows like `z^2 / mu` without bound as `mu` falls. That
+term is a homotopy artifact, not objective curvature, so an information matrix
+formed from the barrier-augmented KKT would report near-infinite information
+about a bound-active direction: a constraint artifact read as data.
+`information()` must be formed from the Lagrangian reduced Hessian on the free
+space. The barrier curvature study in
+`python/notebooks/barrier_curvature_sensitivity.ipynb` derives the term and its
+regimes; the operative sentence is that an active bound removes a direction
+rather than adding curvature.
+
 ## MHE in one solve
 
 Per window: solve the MHE NLP once with `retain_kkt()` set, so the factor is
@@ -197,6 +228,14 @@ undeclared and marginalized automatically. Whether the arrival cost carries
 parameter uncertainty (marginal) or treats parameters as known (conditional)
 is a modeling choice, set by whether the parameters are in the arrival block.
 
+A state at a bound during the window is the case to get right, since the
+failure is silent either way. A zero row in `Pi^{-1}` would leave the next
+window free to wander in a direction this window pinned; barrier curvature
+carried through would hard-pin it. Neither is needed: the bound is still a
+bound in the next window's NLP, so the arrival cost does not have to reproduce
+it. The arrival cost carries the free-space information and the bound does its
+own work; encoding it in both double-counts.
+
 ## Scope and compatibility
 
 pyomo-pounce only. All three items are additive to v0.9: `information()` is
@@ -209,8 +248,15 @@ a forward-compatible subset. Nothing here needs to be rushed into v0.9.
 ## Validation
 
 - `information(...)` against `inv(covariance(...))` to tolerance on a
-  well-conditioned block; the conditioning advantage on a deliberately
-  ill-identified one.
+  well-conditioned block with no active bound; the conditioning advantage on a
+  deliberately ill-identified one. The identity is stated on the free block:
+  with a bound active, `covariance()` is singular by construction (the pinned
+  row is zero), so the round trip is undefined rather than ill-conditioned.
+- A bound-active fitted variable: the free block matches the same model solved
+  with that variable fixed, and the pinned direction is reported as active
+  rather than appearing as a zero or an inflated entry. Refining the solver's
+  `mu` does not move the free-block numbers, which is what separates
+  information from barrier curvature.
 - The marginal identity: `inv(state block of covariance(wrt={state,
   params}))` against `information(wrt=state)`, both the parameter-marginal
   state information.
