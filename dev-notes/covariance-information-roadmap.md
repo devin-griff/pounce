@@ -116,7 +116,7 @@ pounce bakes it into the held factor (`kkt_perturbations()` in `solver.rs`),
 and it is injected precisely where the Hessian is indefinite or near-singular,
 which is the poorly-identified regime.
 
-**2. `wrt=` block selection on both.** `covariance(model, wrt=block)` and
+**2. `wrt=` block selection.** `covariance(model, wrt=block)` and
 `information(model, wrt=block)` reduce onto the given block, any free
 variables, off the held factor, post-solve. The factor captured at the
 solution covers every free variable, so the block is a call argument, not a
@@ -158,11 +158,12 @@ already keeps the factor. A block queried under that declaration alone comes
 out conditional on the pinned parameter, since fixing an input conditions
 rather than marginalizes.
 
-**4. Joint activity classification.** Both accessors classify a bound as active
-on slack **and** multiplier, with tolerances tied to `mu` (compare `s` to
-`sqrt(mu)`, and `s*z` to `mu`), giving three outcomes: free, pinned, and weakly
-active, which is flagged rather than forced into either. The barrier's
-diagonal `Sigma_i = z_i / s_i = mu / s_i^2` is what separates them:
+**4. Joint activity classification.** `covariance()` and `information()`
+classify a bound as active on slack **and** multiplier, with tolerances tied to
+`mu` (compare `s` to `sqrt(mu)`, and `s*z` to `mu`), giving three outcomes:
+free, pinned, and weakly active, which is flagged rather than forced into
+either. The barrier's diagonal `Sigma_i = z_i / s_i = mu / s_i^2` separates
+them:
 
 | regime | slack `s` | multiplier `z` | `Sigma` as `mu -> 0` |
 |---|---|---|---|
