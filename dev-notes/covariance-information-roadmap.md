@@ -106,8 +106,7 @@ variance; the same zeros in an information matrix read as zero information,
 the opposite claim. So `information()` returns the free block plus, for each
 pinned direction, the retained row with `Sigma` removed: the finite weight,
 describing how the objective curves as that variable leaves its bound, and
-computable only from the held factor. The activity classification is returned
-with them.
+computable only from the held factor. Item 4 gives the per-regime dispositions.
 
 It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`).
 `Sigma` is rank-structured onto the deleted directions, so the projection
@@ -163,21 +162,22 @@ classify a bound as active on slack **and** multiplier, with tolerances tied to
 `mu` (compare `s` to `sqrt(mu)`, and `s*z` to `mu`), giving three outcomes.
 The barrier's diagonal `Sigma_i = z_i / s_i = mu / s_i^2` separates them:
 
-| regime | slack `s` | multiplier `z` | `Sigma` as `mu -> 0` |
-|---|---|---|---|
-| inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` |
-| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> infinity` |
-| weakly active | `-> 0` | `-> 0` | finite, `O(1)` |
+| regime | slack `s` | multiplier `z` | `Sigma` as `mu -> 0` | reported as |
+|---|---|---|---|---|
+| inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` | in the free block, unadjusted |
+| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> infinity` | out of the free block, its retained row less `Sigma` |
+| weakly active | `-> 0` | `-> 0` | finite, `O(1)` | in the free block, its diagonal less `Sigma` |
 
-A weakly active variable sits within `O(sqrt(mu))` of its bound while carrying
-finite information of the same order as the objective's own curvature. Its
-multiplier is near zero, so the bound is not holding it and it stays in the
-free block, but with `Sigma` subtracted from its diagonal, the same
-subtraction item 1 applies to a pinned row and for the same reason: here that
-term is `O(1)`, not `O(mu)`. Leaving it in unsubtracted roughly doubles the
-curvature reported for that direction, and the error does not shrink with `mu`.
-The classification is returned for it either way, since which side of the
-tolerance it lands on is not stable.
+`Sigma` comes off in the last two rows for the same reason and by the same
+subtraction: it is the barrier's, not the objective's. It is left in the first
+because `O(mu)` is below the tolerance anything else is computed to. A weakly
+active variable sits within `O(sqrt(mu))` of its bound while carrying finite
+information of the same order as the objective's own curvature, and its
+multiplier is near zero, so the bound is not holding it; leaving `Sigma` in
+there would roughly double the curvature reported for that direction, an error
+that does not shrink with `mu`. The classification is returned with the matrix
+in every regime, since which side of a tolerance a variable falls on is not
+stable.
 
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
 `tol = 1e-6 * (1.0 + abs(xv))`), which pins such a variable and deletes its
