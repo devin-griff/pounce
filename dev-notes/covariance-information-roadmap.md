@@ -97,8 +97,9 @@ Same `hessian=` selector: Lagrangian (default, the exact reduced Hessian,
 what the information-form arrival cost wants) and Gauss-Newton (PSD).
 
 Bound-active directions are projected out: the information matrix is
-restricted to the free block, which is `covariance()`'s existing construction,
-never inverted first and then restricted. The embedding differs.
+restricted to the free block, the square block over the directions not at a
+bound, which is `covariance()`'s existing construction, never inverted first
+and then restricted. The embedding differs.
 `covariance()` embeds a pinned parameter as a zero row, reading as zero
 variance; the same zeros in an information matrix read as zero information,
 the opposite claim. So `information()` returns the free block plus, for each
@@ -167,9 +168,9 @@ active bound alone. A variable's regime decides how it appears in each result:
 
 | regime | `s` | `z` | `Sigma` as `mu -> 0` | in `covariance()` | in `information()` |
 |---|---|---|---|---|---|
-| inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` | the free block | the free block |
-| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> inf` | a zero row | reduced onto with `Sigma` off, outside the block |
-| weakly active | `-> 0` | `-> 0` | finite, `O(1)` | the free block, `Sigma` off | the free block, `Sigma` off |
+| inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` | its variance, in the free block | its row, in the free block |
+| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> inf` | a zero row | its reduction with `Sigma` off, outside the free block |
+| weakly active | `-> 0` | `-> 0` | finite, `O(1)` | its variance, from the free block with `Sigma` off | its row, in the free block with `Sigma` off |
 
 The classification is returned with the matrix in every regime, since which
 side of a tolerance a variable falls on is not stable.
