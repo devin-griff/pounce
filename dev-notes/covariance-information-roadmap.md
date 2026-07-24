@@ -2,9 +2,8 @@
 
 **Status: roadmap proposal for pyomo-pounce, targeting v0.10.** This note
 scopes the post-solve second-order surface in pyomo-pounce: `covariance()`,
-shipping in v0.9, and the additions v0.10 should make around it. Everything
-here is additive to the v0.9 `covariance()` surface; nothing changes an
-existing signature. Companion to the active-set sensitivity roadmap
+shipping in v0.9, and the additions v0.10 should make around it. Nothing here
+changes an existing signature. Companion to the active-set sensitivity roadmap
 (`sensitivity-roadmap.md`), which extends `estimate()`; this note extends
 `covariance()`.
 
@@ -112,8 +111,25 @@ labeled residual groups of unequal variance `covariance()` is a
 heteroscedastic sandwich (`sens.py:995` Lagrangian, `sens.py:969`
 Gauss-Newton), whose inverse is no scalar multiple of a reduced Hessian.
 Same `hessian=` selector: Lagrangian (default, the exact reduced Hessian,
-what the information-form arrival cost wants) and Gauss-Newton (PSD). Bound
-handling is in Active bounds below.
+what the information-form arrival cost wants) and Gauss-Newton (PSD).
+
+Bound-active directions are projected out: the information matrix is
+restricted to the free block, which is `covariance()`'s existing construction,
+never inverted first and then restricted. The embedding differs.
+`covariance()` embeds a pinned parameter as a zero row, reading as zero
+variance; the same zeros in an information matrix read as zero information,
+the opposite claim. So `information()` returns the free block plus, for each
+pinned direction, the retained row with `Sigma` removed: the finite weight,
+describing how the objective curves as that variable leaves its bound, and
+computable only from the held factor. The activity classification is returned
+with them.
+
+It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`).
+`Sigma` is rank-structured onto the deleted directions, so the projection
+removes it; `delta_w * I` is isotropic, lands on the free block, and survives.
+pounce bakes it into the held factor (`kkt_perturbations()` in `solver.rs`),
+and it is injected precisely where the Hessian is indefinite or near-singular,
+which is the poorly-identified regime.
 
 **2. `wrt=` block selection on both.** `covariance(model, wrt=block)` and
 `information(model, wrt=block)` reduce onto the given block, any free
@@ -127,6 +143,12 @@ state at one time point is one call rather than an enumeration.
 
 Each call re-reduces onto its own argument, giving that block's marginal, so
 one solve serves as many blocks as you ask about.
+
+A bound-active variable outside the block is not deleted: its `Sigma` stays in
+the held factor, and as `mu` falls that growing diagonal drives the coupling
+through it to zero, so the block converges to the value conditional on that
+bound rather than the marginal over it. The active set is returned with the
+matrix, and the block's numbers move with `mu` on the way there.
 
 **3. `retain_kkt()`, a factor-retention switch decoupled from
 declarations.** The solve factors the KKT to solve the NLP; the only
@@ -170,16 +192,11 @@ exactly the `retain_kkt()`-only row. The block `T` then comes out conditional
 on the pinned parameter, since fixing an input conditions rather than
 marginalizes.
 
-## Active bounds
-
-Three things have to be right: which directions count as bound-active, what the
-projection does with them, and what gets reported. An active bound deletes a
-direction; it adds no intrinsic curvature.
-
-### Three regimes
-
-The barrier adds a diagonal `Sigma_i = z_i / s_i = mu / s_i^2` to the primal
-Hessian, sized by the activity regime:
+**4. Joint activity classification.** Both accessors classify a bound as active
+on slack **and** multiplier, with tolerances tied to `mu` (compare `s` to
+`sqrt(mu)`, and `s*z` to `mu`), giving three outcomes: free, pinned, and weakly
+active, which is flagged rather than forced into either. The barrier's
+diagonal `Sigma_i = z_i / s_i = mu / s_i^2` is what separates them:
 
 | regime | slack `s` | multiplier `z` | `Sigma` as `mu -> 0` |
 |---|---|---|---|
@@ -187,89 +204,29 @@ Hessian, sized by the activity regime:
 | strongly active | `-> 0` | `O(1)` | `z^2 / mu -> infinity` |
 | weakly active | `-> 0` | `-> 0` | finite, `O(1)` |
 
-Under strict complementarity the projection handles both live cases. The large
-term sits exactly on the direction the projection deletes, the vanishing one is
-`O(mu)`, so the free block is the objective's own curvature and needs no
-scrubbing.
-
-The weakly active case is the exception, and it is why activity has three
-outcomes. When slack and multiplier vanish together they do so at the same
-rate, both `O(sqrt(mu))`, so `Sigma = mu / s^2` tends to a finite limit of the
-same order as the objective's own curvature in that direction, on a direction
-whose multiplier is near zero. Treated as free, the block carries roughly twice
-that curvature, an error that does not shrink with `mu`. Treated as pinned, a
-direction carrying finite information is deleted. It is flagged instead.
-
-### Activity detection
-
-Classification is on slack **and** multiplier, with tolerances tied to `mu`
-(compare `s` to `sqrt(mu)`, and `s*z` to `mu`). Both small is weakly active.
-
-Distance to the bound alone does not separate the regimes. A weakly active
-variable sits within `O(sqrt(mu))` of its bound, so any slack-only test at a
-fixed tolerance reads it as pinned and deletes a direction whose information is
-finite. `covariance()` ships that rule today (`sens.py:826-827`,
-`tol = 1e-6 * (1.0 + abs(xv))`), so moving to the joint test is a change to
-both accessors and belongs with this work. A solver that relaxed the bound
-reports a slack that is not the true slack, which the test accounts for.
-
-### The projection is shared, the embedding is not
-
-A fitted variable sitting at one of its bounds at the optimum is projected
-out: both accessors work in the free (off-bound) directions. `covariance()`
-restricts the information matrix to the free block and inverts that, rather
-than inverting first and restricting, which is the construction it already
-ships. `information()` restricts the same way.
-
-What cannot carry over is the embedding. `covariance()` embeds a pinned
-parameter as a zero row and column, which reads as zero variance and is
-correct for something the active set holds fixed. The same zeros in an
-information matrix read as zero information, that is, infinite variance: the
-same array making the opposite claim.
-
-So `information()` returns the free block and reports the pinned directions
-separately, with the activity classification. Three weights are available for a
-pinned direction: zero, the barrier's `z^2/mu`, and the retained row with
-`Sigma` removed. Only the third is finite, and it is the one that answers the
-question a consumer actually has, how the objective curves as that variable
-moves off its bound into the interior. It is computable only from the held
-factor, so discarding it is a loss the caller cannot undo, and it is what
-`information()` reports.
-
-Skipping the projection produces the artifact directly: the bound-active entry
-of the full `(W + Sigma)^{-1}` is a variance collapsing to zero, a constraint
-artifact read as precision.
-
-### What the projection does not remove
-
-`Sigma` is rank-structured onto the deleted directions, so the projection
-handles it. Inertia correction is isotropic: `delta_w * I` lands on the free
-block and survives. pounce bakes it into the held factor
-(`kkt_perturbations()` in `solver.rs`) and `covariance()` guards on it
-(`sens.py:814-820`); `information()` carries the same guardrail. It matters
-most in the poorly-identified directions, since `delta` is injected precisely
-where the Hessian is indefinite or near-singular.
-
-### Bound-active variables outside the block
-
-A bound-active variable inside the block is deleted. One outside it is not: its
-`Sigma` stays in the held factor and enters the Schur complement onto the
-block, and as `mu` falls that growing diagonal drives the coupling through it
-to zero, so the block converges to the value conditional on the bound rather
-than the marginal over it. Conditional information dominates the marginal, so
-the active set is reported alongside the matrix, and the block's numbers move
-with `mu` on the way there. The reduction marginalizes over free directions and
-conditions on bound-active ones: independent of the declarations, dependent on
-the active set.
+A weakly active variable sits within `O(sqrt(mu))` of its bound while carrying
+finite information of the same order as the objective's own curvature. Treated
+as free its block carries roughly twice that curvature, an error that does not
+shrink with `mu`; treated as pinned, finite information is deleted.
+`covariance()` ships a slack-only test today (`sens.py:826-827`,
+`tol = 1e-6 * (1.0 + abs(xv))`), which pins it, so this is the one item that
+changes `covariance()`'s numbers rather than only adding surface. A solver that
+relaxed the bound reports a slack that is not the true slack.
 
 ## Scope and compatibility
 
-pyomo-pounce only. All three items are additive to v0.9: `information()` is
-a new function, `wrt=` (with its slice and `(Var, time)` block forms) is a
-new optional keyword, and `retain_kkt()` is new surface. Nothing
-changes an existing signature. v0.9 `covariance(model)` with no `wrt=` reduces onto the declared
-set, which is exactly the v0.10 no-argument default, so the v0.9 surface is
-a forward-compatible subset. Nothing here needs to be rushed into v0.9.
+pyomo-pounce only. Items 1 to 3 are additive: `information()` is a new
+function, `wrt=` (with its slice and `(Var, time)` block forms) is a new
+optional keyword, and `retain_kkt()` is new surface. No signature changes, and
+v0.9 `covariance(model)` with no `wrt=` reduces onto the declared set, which is
+exactly the v0.10 no-argument default, so the v0.9 surface is a
+forward-compatible subset.
+
+Item 4 is the exception. The joint activity test changes which directions
+`covariance()` projects out, so a model with a weakly active bound gets
+different numbers than v0.9 returns. That is a fix rather than a break, but it
+is a behavior change and wants its own release note. Nothing here needs to be
+rushed into v0.9.
 
 ## Validation
 
