@@ -160,10 +160,8 @@ rather than marginalizes.
 
 **4. Joint activity classification.** `covariance()` and `information()`
 classify a bound as active on slack **and** multiplier, with tolerances tied to
-`mu` (compare `s` to `sqrt(mu)`, and `s*z` to `mu`), giving three outcomes:
-free, pinned, and weakly active, which is flagged rather than forced into
-either. The barrier's diagonal `Sigma_i = z_i / s_i = mu / s_i^2` separates
-them:
+`mu` (compare `s` to `sqrt(mu)`, and `s*z` to `mu`), giving three outcomes.
+The barrier's diagonal `Sigma_i = z_i / s_i = mu / s_i^2` separates them:
 
 | regime | slack `s` | multiplier `z` | `Sigma` as `mu -> 0` |
 |---|---|---|---|
@@ -172,13 +170,20 @@ them:
 | weakly active | `-> 0` | `-> 0` | finite, `O(1)` |
 
 A weakly active variable sits within `O(sqrt(mu))` of its bound while carrying
-finite information of the same order as the objective's own curvature. Treated
-as free its block carries roughly twice that curvature, an error that does not
-shrink with `mu`; treated as pinned, finite information is deleted.
+finite information of the same order as the objective's own curvature. Its
+multiplier is near zero, so the bound is not holding it and it stays in the
+free block, but with `Sigma` subtracted from its diagonal, the same
+subtraction item 1 applies to a pinned row and for the same reason: here that
+term is `O(1)`, not `O(mu)`. Leaving it in unsubtracted roughly doubles the
+curvature reported for that direction, and the error does not shrink with `mu`.
+The classification is returned for it either way, since which side of the
+tolerance it lands on is not stable.
+
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
-`tol = 1e-6 * (1.0 + abs(xv))`), which pins it, so this is the one item that
-changes `covariance()`'s numbers rather than only adding surface. A solver that
-relaxed the bound reports a slack that is not the true slack.
+`tol = 1e-6 * (1.0 + abs(xv))`), which pins such a variable and deletes its
+information, so this is the one item that changes `covariance()`'s numbers
+rather than only adding surface. A solver that relaxed the bound reports a
+slack that is not the true slack.
 
 ## Scope and compatibility
 
@@ -210,10 +215,10 @@ different numbers than v0.9 returns.
   barrier-inflated at once, so it pairs with the slack-and-multiplier
   classification. A block conditioned on a bound-active variable outside it
   does move with `mu`, which is correct.
-- A weakly-active fitted variable (slack and multiplier both near zero) is
-  flagged, not classified free (which inflates its block by the barrier term)
-  or pinned (which drops finite information), and the flag survives a sweep in
-  `mu`.
+- A weakly-active fitted variable (slack and multiplier both near zero) stays
+  in the free block with its diagonal matching the objective's curvature in
+  that direction, not twice it, and is reported as weakly active. Both hold
+  across a sweep in `mu`.
 - An indefinite Lagrangian free block returns the settled outcome, refusal or a
   Gauss-Newton fallback, not a matrix that makes a downstream quadratic
   unbounded below.
