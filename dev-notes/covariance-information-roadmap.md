@@ -162,22 +162,26 @@ classify a bound as active on slack **and** multiplier, with tolerances tied to
 `mu` (compare `s` to `sqrt(mu)`, and `s*z` to `mu`), giving three outcomes.
 The barrier's diagonal `Sigma_i = z_i / s_i = mu / s_i^2` separates them:
 
-| regime | slack `s` | multiplier `z` | `Sigma` as `mu -> 0` | what is returned |
-|---|---|---|---|---|
-| inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` | in the free block, unadjusted |
-| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> infinity` | outside the free block, its retained row less `Sigma` |
-| weakly active | `-> 0` | `-> 0` | finite, `O(1)` | in the free block, its diagonal less `Sigma` |
+| regime | `s` | `z` | `Sigma` as `mu -> 0` | `covariance()` returns | `information()` returns |
+|---|---|---|---|---|---|
+| inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` | in the free block | in the free block |
+| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> inf` | a zero row | its retained row less `Sigma`, outside the block |
+| weakly active | `-> 0` | `-> 0` | finite, `O(1)` | free block, `Sigma` off | free block, `Sigma` off |
 
-`Sigma` comes off in the last two rows for the same reason and by the same
-subtraction: it is the barrier's, not the objective's. It is left in the first
-because `O(mu)` is below the tolerance anything else is computed to. A weakly
-active variable sits within `O(sqrt(mu))` of its bound while carrying finite
-information of the same order as the objective's own curvature, and its
-multiplier is near zero, so the bound is not holding it; leaving `Sigma` in
-there would roughly double the curvature reported for that direction, an error
-that does not shrink with `mu`. The classification is returned with the matrix
-in every regime, since which side of a tolerance a variable falls on is not
-stable.
+The two columns agree except where a direction is pinned, which is the
+embedding asymmetry from item 1: a zero row is zero variance, correct for
+something the active set holds fixed, and zero information, which is the
+opposite claim.
+
+`Sigma` comes off in the last two rows by the same subtraction, since it is the
+barrier's and not the objective's. It is left in the first because `O(mu)` is
+below the tolerance everything else is computed to. A weakly active variable
+sits within `O(sqrt(mu))` of its bound while carrying finite information of the
+same order as the objective's own curvature, and its multiplier is near zero,
+so the bound is not holding it; leaving `Sigma` in there would roughly double
+the curvature reported for that direction, an error that does not shrink with
+`mu`. The classification is returned with the matrix in every regime, since
+which side of a tolerance a variable falls on is not stable.
 
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
 `tol = 1e-6 * (1.0 + abs(xv))`), which pins such a variable and deletes its
