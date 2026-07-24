@@ -167,10 +167,7 @@ the slack side contributes `μ/s²`, so the active bound sets the regime.
 
 Write $W$ for the primal Hessian block the held factor carries, $H = W - \Sigma$
 for the Lagrangian one, $F$ for the free directions and $A$ for the pinned.
-What each accessor gives for a fitted variable $i$, taking one residual
-variance $\sigma^2$ across the fit; declaring residual groups of unequal
-variance changes the covariance column to the sandwich form in item 1, and
-leaves the information column alone:
+What each accessor gives for a fitted variable $i$:
 
 | bound regime | `s` | `z` | `Σ` as `μ → 0` | `covariance()` | `information()` |
 |---|---|---|---|---|---|
