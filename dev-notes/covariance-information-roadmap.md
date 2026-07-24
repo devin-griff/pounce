@@ -42,7 +42,9 @@ work below).
 v0.9 ships `covariance()` (in `pyomo-pounce/pyomo_pounce/sens.py`). You
 `declare_fitted` a set of free variables, solve, and `covariance(model)`
 returns their asymptotic covariance: the scaled parameter block of the
-inverse KKT matrix, `2σ² (K⁻¹)_pp`. Under the hood that block
+inverse KKT matrix, $2\sigma^2 (K^{-1})_{pp}$, where $\sigma^2$ is the residual
+variance and the 2 is the sum-of-squares convention that makes the reduced
+Hessian $2J^\top J$. Under the hood that block
 is `inv(d2f*/dp2)`, the inverse reduced Hessian of the eliminated problem,
 obtained by one backsolve per declared variable against the held
 factorization. `hessian=` selects the Lagrangian (observed) or Gauss-Newton
@@ -164,28 +166,22 @@ what makes the multiplier necessary. It sums over both bounds,
 the slack side contributes `μ/s²`, so the active bound sets the regime.
 
 Write $W$ for the primal Hessian block the held factor carries, $H = W - \Sigma$
-for the Lagrangian one, $F$ for the free directions and $A$ for the pinned. A
-fitted variable's regime decides which set it joins:
+for the Lagrangian one, $F$ for the free directions and $A$ for the pinned.
+What each accessor gives for a fitted variable $i$, the covariance column
+written for pooled residuals (the grouped case is the sandwich in item 1):
 
-| bound regime | `s` | `z` | `Σ` as `μ → 0` | joins |
-|---|---|---|---|---|
-| inactive | `O(1)` | `→ 0` | `μ/s² → 0` | $F$ |
-| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | $A$ |
-| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | $F$ |
+| bound regime | `s` | `z` | `Σ` as `μ → 0` | `covariance()` | `information()` |
+|---|---|---|---|---|---|
+| inactive | `O(1)` | `→ 0` | `μ/s² → 0` | $2\sigma^2 (H_{FF}^{-1})_{ii}$ | $H_{iF}$ |
+| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | $0$ | $H_{ii} - H_{iF} H_{FF}^{-1} H_{Fi}$ |
+| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | $2\sigma^2 (H_{FF}^{-1})_{ii}$ | $H_{iF}$ |
 
-and the set decides what each accessor gives for it, the $2\sigma^2$ scale on
-the covariance side omitted:
-
-| variable $i$ in | `covariance()` | `information()` |
-|---|---|---|
-| $F$ | $(H_{FF}^{-1})_{ii}$ | $H_{iF}$ |
-| $A$ | $0$ | $H_{ii} - H_{iF} H_{FF}^{-1} H_{Fi}$ |
-
-Three regimes, two dispositions: weakly active is not a third treatment but the
-case a slack-only test misfiles into $A$. $\Sigma$ comes off in every row, since
-that is what makes $H$ the Lagrangian Hessian rather than the barrier one; the
-`Σ` column is what skipping that subtraction would cost, `O(μ)` and harmless
-when inactive, a factor when weakly active, unbounded when pinned.
+Three regimes, two dispositions: the first and last rows agree, so weakly
+active is not a third treatment but the case a slack-only test misfiles into
+$A$. $\Sigma$ comes off in every row, since that is what makes $H$ the
+Lagrangian Hessian rather than the barrier one; the `Σ` column is what skipping
+that subtraction would cost, `O(μ)` and harmless when inactive, a factor when
+weakly active, unbounded when pinned.
 
 The classification is returned with the matrix in every regime, since which
 side of a tolerance a variable falls on is not stable.
