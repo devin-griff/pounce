@@ -42,7 +42,7 @@ work below).
 v0.9 ships `covariance()` (in `pyomo-pounce/pyomo_pounce/sens.py`). You
 `declare_fitted` a set of free variables, solve, and `covariance(model)`
 returns their asymptotic covariance: the scaled parameter block of the
-inverse KKT matrix, `2 * sigma_sq * (K^-1)_pp`. Under the hood that block
+inverse KKT matrix, `2σ² (K⁻¹)_pp`. Under the hood that block
 is `inv(d2f*/dp2)`, the inverse reduced Hessian of the eliminated problem,
 obtained by one backsolve per declared variable against the held
 factorization. `hessian=` selects the Lagrangian (observed) or Gauss-Newton
@@ -73,8 +73,8 @@ of which `covariance()` is the Pyomo-model sibling.
 ## The MHE arrival cost
 
 The motivating consumer is moving horizon estimation. Its information-form
-arrival cost is `Gamma(x0) = 0.5 (x0 - xhat)^T Pi^{-1} (x0 - xhat)`, where the
-weighting `Pi^{-1}` is the reduced Hessian marginalized onto the arrival
+arrival cost is `Γ(x0) = ½ (x0 − x̂)ᵀ Π⁻¹ (x0 − x̂)`, where the
+weighting `Π⁻¹` is the reduced Hessian marginalized onto the arrival
 state, the Lagrangian information, not the covariance. That un-inverted,
 per-block object is what the roadmap below adds.
 
@@ -88,7 +88,7 @@ in the poorly-identified directions.
 
 It returns natural units, the core's convention, since a consumer whose
 objective already carries its own inverse-covariance weights needs the
-unscaled object; pyomo `covariance()` carries the `2 * sigma_sq` scaling on
+unscaled object; pyomo `covariance()` carries the `2σ²` scaling on
 top. `inv(covariance(...))` recovers it only for pooled residuals: with
 labeled residual groups of unequal variance `covariance()` is a
 heteroscedastic sandwich (`sens.py:995` Lagrangian, `sens.py:969`
@@ -103,15 +103,15 @@ and then restricted. The embedding differs.
 `covariance()` embeds a pinned parameter as a zero row, reading as zero
 variance; the same zeros in an information matrix read as zero information,
 the opposite claim. So `information()` returns the free block plus, for each
-pinned direction, the reduction onto that direction with `Sigma` off its
+pinned direction, the reduction onto that direction with `Σ` off its
 diagonal: not the diagonal entry, but the Schur complement eliminating the free
 variables, which is the finite weight describing how the objective curves as
 that variable leaves its bound. It is computable only from the held factor.
 Item 4 gives the per-regime dispositions.
 
 It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`).
-`Sigma` is rank-structured onto the deleted directions, so the projection
-removes it; `delta_w * I` is isotropic, lands on the free block, and survives.
+`Σ` is rank-structured onto the deleted directions, so the projection
+removes it; `δ_w I` is isotropic, lands on the free block, and survives.
 pounce bakes it into the held factor (`kkt_perturbations()` in `solver.rs`),
 and it is injected precisely where the Hessian is indefinite or near-singular,
 which is the poorly-identified regime.
@@ -129,11 +129,11 @@ state at one time point is one call rather than an enumeration.
 Each call re-reduces onto its own argument, giving that block's marginal, so
 one solve serves as many blocks as you ask about.
 
-A bound-active variable outside the block is not deleted: its `Sigma` stays in
-the held factor, and as `mu` falls that growing diagonal drives the coupling
+A bound-active variable outside the block is not deleted: its `Σ` stays in
+the held factor, and as `μ` falls that growing diagonal drives the coupling
 through it to zero, so the block converges to the value conditional on that
 bound rather than the marginal over it. The active set is returned with the
-matrix, and the block's numbers move with `mu` on the way there.
+matrix, and the block's numbers move with `μ` on the way there.
 
 **3. `retain_kkt()`, a factor-retention switch decoupled from
 declarations.** The solve factors the KKT to solve the NLP; the only question
@@ -160,18 +160,20 @@ rather than marginalizes.
 
 **4. Joint activity classification.** `covariance()` and `information()`
 classify a bound as active on slack **and** multiplier, with tolerances tied to
-`mu` (compare `s` to `sqrt(mu)`, and `s*z` to `mu`), giving three outcomes.
+`μ` (compare `s` to `sqrt(μ)`, and `s·z` to `μ`), giving three outcomes.
 The barrier's diagonal separates them. It sums over both bounds,
-`Sigma_i = z^L_i / s^L_i + z^U_i / s^U_i`, but a variable is active at one at
-most, and the slack side contributes `mu / s^2`, so the regime is set by the
-active bound alone. The regime of a fitted variable's bound decides what each
-accessor gives for that variable:
+`Σ_i = z^L_i/s^L_i + z^U_i/s^U_i`, but a variable is active at one at
+most, and the slack side contributes `μ/s²`, so the regime is set by the
+active bound alone. Wherever `Σ` is not `O(μ)` it comes off the
+information's diagonal before anything is computed from it, including the
+inversion behind a variance; the table writes that as `Σ` off. The regime
+of a fitted variable's bound then decides what each accessor gives for it:
 
-| bound regime | `s` | `z` | `Sigma` as `mu -> 0` | `covariance()` gives | `information()` gives |
+| bound regime | `s` | `z` | `Σ` as `μ → 0` | `covariance()` gives | `information()` gives |
 |---|---|---|---|---|---|
-| inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` | its variance, from the free block | its free-block row |
-| strongly active | `-> 0` | `O(1)` | `z^2 / mu -> inf` | a zero row | its reduction with `Sigma` off, separately |
-| weakly active | `-> 0` | `-> 0` | finite, `O(1)` | its variance, `Sigma` off | its free-block row, `Sigma` off |
+| inactive | `O(1)` | `→ 0` | `μ/s^2 → 0` | its variance, from the free block | its free-block row |
+| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | a zero row | its reduction with `Σ` off, separately |
+| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | its variance, `Σ` off | its free-block row, `Σ` off |
 
 The classification is returned with the matrix in every regime, since which
 side of a tolerance a variable falls on is not stable.
@@ -205,17 +207,17 @@ different numbers than v0.9 returns.
   different.
 - A bound-active fitted variable: the free block matches the same model solved
   with that variable fixed (a bounds-to-equalities substitution, so LICQ is
-  assumed), and the pinned direction reports the reduction onto it with `Sigma`
+  assumed), and the pinned direction reports the reduction onto it with `Σ`
   off, with the activity classification.
-- Refining the solver's `mu` moves the free-block numbers by `O(mu)` and no
-  more. Necessary, not sufficient: the weakly-active case is `mu`-invariant and
+- Refining the solver's `μ` moves the free-block numbers by `O(μ)` and no
+  more. Necessary, not sufficient: the weakly-active case is `μ`-invariant and
   barrier-inflated at once, so it pairs with the slack-and-multiplier
   classification. A block conditioned on a bound-active variable outside it
-  does move with `mu`, which is correct.
+  does move with `μ`, which is correct.
 - A weakly-active fitted variable (slack and multiplier both near zero) stays
   in the free block with its diagonal matching the objective's curvature in
   that direction, not twice it, and is reported as weakly active. Both hold
-  across a sweep in `mu`.
+  across a sweep in `μ`.
 - An indefinite Lagrangian free block returns the settled outcome, refusal or a
   Gauss-Newton fallback, not a matrix that makes a downstream quadratic
   unbounded below.
