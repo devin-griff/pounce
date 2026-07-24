@@ -196,17 +196,25 @@ metadata, not as matrix entries. A pinned direction has no finite information
 to report; conditional on the bound staying active it is unbounded, and
 unbounded is not something a caller can multiply.
 
-The interior-point machinery makes this sharper. The barrier adds a diagonal
-`Sigma_i = z_i / s_i = mu / s_i^2` to the primal Hessian, which for a
-strongly active bound grows like `z^2 / mu` without bound as `mu` falls. That
-term is a homotopy artifact, not objective curvature, so an information matrix
-formed from the barrier-augmented KKT would report near-infinite information
-about a bound-active direction: a constraint artifact read as data.
-`information()` must be formed from the Lagrangian reduced Hessian on the free
-space. The barrier curvature study in
+The interior-point machinery says why the projection is the whole fix. The
+barrier adds a diagonal `Sigma_i = z_i / s_i = mu / s_i^2` to the primal
+Hessian, which on a strongly active bound grows like `z^2 / mu` without bound
+as `mu` falls, and on an inactive one vanishes like `mu / s^2`. The large term
+sits exactly on the direction the projection deletes, so once the free block is
+taken, what is left is the objective's own curvature, not inflated by any
+barrier term. There is no separate step scrubbing `Sigma` out of the free
+block, and no choice to make there between a barrier Hessian and a Lagrangian
+one, since on the free space they agree to `O(mu)`.
+
+The failure mode is skipping the projection, not picking the wrong Hessian.
+The bound-active entry of the full `(W + Sigma)^{-1}` is a variance collapsing
+to zero: a constraint artifact read as precision. Once projected, the residual
+concern is only finite `mu`, since the free block still carries `O(mu / s^2)`
+terms from inactive bounds, which is what the `mu`-independence check in
+Validation is for. The barrier curvature study in
 `python/notebooks/barrier_curvature_sensitivity.ipynb` derives the term and its
-regimes; the operative sentence is that an active bound removes a direction
-rather than adding curvature.
+regimes; its operative sentence is that an active bound deletes a direction and
+adds no intrinsic curvature.
 
 ## MHE in one solve
 
