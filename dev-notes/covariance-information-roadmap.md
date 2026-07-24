@@ -188,11 +188,9 @@ v0.9 `covariance(model)` with no `wrt=` reduces onto the declared set, which is
 exactly the v0.10 no-argument default, so the v0.9 surface is a
 forward-compatible subset.
 
-Item 4 is the exception. The joint activity test changes which directions
+Item 4 is the exception: the joint activity test changes which directions
 `covariance()` projects out, so a model with a weakly active bound gets
-different numbers than v0.9 returns. That is a fix rather than a break, but it
-is a behavior change and wants its own release note. Nothing here needs to be
-rushed into v0.9.
+different numbers than v0.9 returns.
 
 ## Validation
 
@@ -201,7 +199,7 @@ rushed into v0.9.
   conditioning advantage on a deliberately ill-identified one. The identity
   holds only there: a bound active makes `covariance()` singular (the pinned
   row is zero) and grouped residuals of unequal variance make the two objects
-  genuinely different.
+  different.
 - A bound-active fitted variable: the free block matches the same model solved
   with that variable fixed (a bounds-to-equalities substitution, so LICQ is
   assumed), and the pinned direction reports its retained-row value with the
