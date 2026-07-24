@@ -168,26 +168,14 @@ The barrier's diagonal `Sigma_i = z_i / s_i = mu / s_i^2` separates them:
 | strongly active | `-> 0` | `O(1)` | `z^2 / mu -> inf` | a zero row | its retained row less `Sigma`, outside the block |
 | weakly active | `-> 0` | `-> 0` | finite, `O(1)` | free block, `Sigma` off | free block, `Sigma` off |
 
-The two columns agree except where a direction is pinned, which is the
-embedding asymmetry from item 1: a zero row is zero variance, correct for
-something the active set holds fixed, and zero information, which is the
-opposite claim.
-
-`Sigma` comes off in the last two rows by the same subtraction, since it is the
-barrier's and not the objective's. It is left in the first because `O(mu)` is
-below the tolerance everything else is computed to. A weakly active variable
-sits within `O(sqrt(mu))` of its bound while carrying finite information of the
-same order as the objective's own curvature, and its multiplier is near zero,
-so the bound is not holding it; leaving `Sigma` in there would roughly double
-the curvature reported for that direction, an error that does not shrink with
-`mu`. The classification is returned with the matrix in every regime, since
-which side of a tolerance a variable falls on is not stable.
+The classification is returned with the matrix in every regime, since which
+side of a tolerance a variable falls on is not stable.
 
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
-`tol = 1e-6 * (1.0 + abs(xv))`), which pins such a variable and deletes its
-information, so this is the one item that changes `covariance()`'s numbers
-rather than only adding surface. A solver that relaxed the bound reports a
-slack that is not the true slack.
+`tol = 1e-6 * (1.0 + abs(xv))`), which pins a weakly active variable and
+deletes its information, so this is the one item that changes `covariance()`'s
+numbers rather than only adding surface. A solver that relaxed the bound
+reports a slack that is not the true slack.
 
 ## Scope and compatibility
 
