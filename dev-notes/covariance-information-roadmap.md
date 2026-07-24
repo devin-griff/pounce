@@ -163,22 +163,29 @@ what makes the multiplier necessary. It sums over both bounds,
 `Σ_i = z^L_i/s^L_i + z^U_i/s^U_i`, but a variable is active at one at most and
 the slack side contributes `μ/s²`, so the active bound sets the regime.
 
-Write `W` for the primal Hessian block the held factor carries and `H = W − Σ`
-for the Lagrangian one, `F` for the free directions and `A` for the pinned. For
-a fitted variable `i`, with the `2σ²` scale on the covariance side omitted:
+Write $W$ for the primal Hessian block the held factor carries, $H = W - \Sigma$
+for the Lagrangian one, $F$ for the free directions and $A$ for the pinned. A
+fitted variable's regime decides which set it joins:
 
-| bound regime | `s` | `z` | `Σ` as `μ → 0` | `i` in | `covariance()` | `information()` |
-|---|---|---|---|---|---|---|
-| inactive | `O(1)` | `→ 0` | `μ/s² → 0` | `F` | `(H_FF⁻¹)_ii` | `H_iF` |
-| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | `A` | `0` | `H_ii − H_iF H_FF⁻¹ H_Fi` |
-| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | `F` | `(H_FF⁻¹)_ii` | `H_iF` |
+| bound regime | `s` | `z` | `Σ` as `μ → 0` | joins |
+|---|---|---|---|---|
+| inactive | `O(1)` | `→ 0` | `μ/s² → 0` | $F$ |
+| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | $A$ |
+| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | $F$ |
 
-Three regimes, two dispositions: the first and third rows agree, so weakly
-active is not a third treatment but the case a slack-only test misfiles into
-`A`. `Σ` comes off in every row, since that is what makes `H` the Lagrangian
-Hessian rather than the barrier one; the `Σ` column is what skipping that
-subtraction would cost, `O(μ)` and harmless when inactive, a factor when weakly
-active, unbounded when pinned.
+and the set decides what each accessor gives for it, the $2\sigma^2$ scale on
+the covariance side omitted:
+
+| variable $i$ in | `covariance()` | `information()` |
+|---|---|---|
+| $F$ | $(H_{FF}^{-1})_{ii}$ | $H_{iF}$ |
+| $A$ | $0$ | $H_{ii} - H_{iF} H_{FF}^{-1} H_{Fi}$ |
+
+Three regimes, two dispositions: weakly active is not a third treatment but the
+case a slack-only test misfiles into $A$. $\Sigma$ comes off in every row, since
+that is what makes $H$ the Lagrangian Hessian rather than the barrier one; the
+`Σ` column is what skipping that subtraction would cost, `O(μ)` and harmless
+when inactive, a factor when weakly active, unbounded when pinned.
 
 The classification is returned with the matrix in every regime, since which
 side of a tolerance a variable falls on is not stable.
@@ -212,8 +219,8 @@ different numbers than v0.9 returns.
   different.
 - A bound-active fitted variable: the free block matches the same model solved
   with that variable fixed (a bounds-to-equalities substitution, so LICQ is
-  assumed), and the pinned direction reports `H_ii − H_iF H_FF⁻¹ H_Fi` with the
-  activity classification.
+  assumed), and the pinned direction reports
+  $H_{ii} - H_{iF} H_{FF}^{-1} H_{Fi}$ with the activity classification.
 - Refining the solver's `μ` moves the free-block numbers by `O(μ)` and no
   more. Necessary, not sufficient: the weakly-active case is `μ`-invariant and
   barrier-inflated at once, so it pairs with the slack-and-multiplier
