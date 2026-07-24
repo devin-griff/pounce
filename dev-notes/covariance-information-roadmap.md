@@ -187,10 +187,8 @@ slicing.
 ## Active bounds
 
 Three things have to be right: which directions count as bound-active, what the
-projection does with them, and what gets reported. The barrier curvature study
-(`python/notebooks/barrier_curvature_sensitivity.ipynb`) derives the regimes;
-its operative sentence is that an active bound deletes a direction and adds no
-intrinsic curvature.
+projection does with them, and what gets reported. An active bound deletes a
+direction; it adds no intrinsic curvature.
 
 ### Three regimes
 
@@ -201,7 +199,7 @@ Hessian, sized by the activity regime:
 |---|---|---|---|
 | inactive | `O(1)` | `-> 0` | `mu / s^2 -> 0` |
 | strongly active | `-> 0` | `O(1)` | `z^2 / mu -> infinity` |
-| weakly active | `-> 0` | `-> 0` | finite, `-> q` |
+| weakly active | `-> 0` | `-> 0` | finite, `O(1)` |
 
 Under strict complementarity the projection handles both live cases. The large
 term sits exactly on the direction the projection deletes, the vanishing one is
@@ -209,22 +207,22 @@ term sits exactly on the direction the projection deletes, the vanishing one is
 scrubbing.
 
 The weakly active case is the exception, and it is why activity has three
-outcomes. There `s = sqrt(mu/q)` and `z = sqrt(mu*q)`, so `Sigma = q` exactly
-at every `mu`: finite, independent of `mu`, the same order as the objective's
-own curvature, on a direction whose multiplier is near zero. Treated as free,
-the block carries `2q` in place of `q`, an error that does not shrink with
-`mu`. Treated as pinned, a direction carrying finite information is deleted.
-It is flagged instead.
+outcomes. When slack and multiplier vanish together they do so at the same
+rate, both `O(sqrt(mu))`, so `Sigma = mu / s^2` tends to a finite limit of the
+same order as the objective's own curvature in that direction, on a direction
+whose multiplier is near zero. Treated as free, the block carries roughly twice
+that curvature, an error that does not shrink with `mu`. Treated as pinned, a
+direction carrying finite information is deleted. It is flagged instead.
 
 ### Activity detection
 
 Classification is on slack **and** multiplier, with tolerances tied to `mu`
 (compare `s` to `sqrt(mu)`, and `s*z` to `mu`). Both small is weakly active.
 
-Distance to the bound alone does not separate the regimes. At the weakly active
-point of the study's Ipopt run, `x = 5.64e-7` with `z_L = 5.64e-7`, which a
-slack-only test at a fixed tolerance reads as pinned, deleting a direction whose
-information is finite. `covariance()` ships that rule today (`sens.py:826-827`,
+Distance to the bound alone does not separate the regimes. A weakly active
+variable sits within `O(sqrt(mu))` of its bound, so any slack-only test at a
+fixed tolerance reads it as pinned and deletes a direction whose information is
+finite. `covariance()` ships that rule today (`sens.py:826-827`,
 `tol = 1e-6 * (1.0 + abs(xv))`), so moving to the joint test is a change to
 both accessors and belongs with this work. A solver that relaxed the bound
 reports a slack that is not the true slack, which the test accounts for.
@@ -247,9 +245,9 @@ metadata, not as matrix entries. A pinned direction has no finite information
 to report; conditional on the bound staying active it is unbounded, and
 unbounded is not something a caller can multiply.
 
-Skipping the projection produces the artifact the study warns about: the
-bound-active entry of the full `(W + Sigma)^{-1}` is a variance collapsing to
-zero, a constraint artifact read as precision.
+Skipping the projection produces the artifact directly: the bound-active entry
+of the full `(W + Sigma)^{-1}` is a variance collapsing to zero, a constraint
+artifact read as precision.
 
 ### What the projection does not remove
 
@@ -265,14 +263,13 @@ where the Hessian is indefinite or near-singular.
 
 A bound-active variable inside the block is deleted. One outside it is not: its
 `Sigma` stays in the held factor and enters the Schur complement onto the
-block, so the result is conditional on that bound rather than marginal over it.
-On the study's coupled example `information(wrt=x2)` converges to 2.0,
-conditional on `x1` pinned, against a bound-free marginal of 1.5, and the
-number moves with `mu` (1.9938 at `mu=1e-2`, 2.0000 at `mu=1e-8`). Conditional
-information dominates the marginal, so the active set is reported alongside the
-matrix. The reduction marginalizes over free directions and conditions on
-bound-active ones: independent of the declarations, dependent on the active
-set.
+block, and as `mu` falls that growing diagonal drives the coupling through it
+to zero, so the block converges to the value conditional on the bound rather
+than the marginal over it. Conditional information dominates the marginal, so
+the active set is reported alongside the matrix, and the block's numbers move
+with `mu` on the way there. The reduction marginalizes over free directions and
+conditions on bound-active ones: independent of the declarations, dependent on
+the active set.
 
 ## MHE, the motivating consumer
 
@@ -292,8 +289,8 @@ subject to the arrival state equalling `z`, so the consumer builds that
 one-step subproblem and reduces it. Windows overlap in `N-1` points, so
 reducing the entire solved window instead folds the overlap's stage costs into
 `Pi^{-1}` while those same residuals stay live in the next window's objective,
-counting every measurement in the overlap twice: 6.28x over-confident on a
-scalar linear-Gaussian three-point window, growing with the horizon.
+counting every measurement in the overlap twice and compounding with the
+horizon.
 
 Whether the arrival cost carries parameter uncertainty (marginal) or treats
 parameters as known (conditional) is a modeling choice, set by whether the
@@ -301,11 +298,11 @@ parameters are in the block.
 
 A bound-active arrival state is where the reporting convention earns its keep.
 Three weights are available for a pinned direction: zero, the barrier's
-`z^2/mu`, and the retained row with `Sigma` removed, which on the study's
-coupled example are 0, 1.6e8, and 1.5. The third is the finite one, and it is
-computable only inside pounce, so `information()` exposes it alongside the
-activity classification and the estimator decides what its arrival cost does
-with it.
+`z^2/mu`, and the retained row with `Sigma` removed. Only the third is finite
+and reflects how the past cost curves as the arrival state moves off the bound,
+and it is computable only inside pounce, so `information()` exposes it
+alongside the activity classification and the estimator decides what its
+arrival cost does with it.
 
 ## Scope boundary: mechanism in pounce, policy in the caller
 
