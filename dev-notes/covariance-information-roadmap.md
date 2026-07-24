@@ -98,20 +98,16 @@ from the held factor (the Schur complement onto the block's rows) rather than
 by inverting the covariance, which skips the round trip and stays well-scaled
 in the poorly-identified directions.
 
-The definition is the reduced Hessian, not `inv(covariance(...))`. The two
-agree only in the homoscedastic case: `covariance()` returns a heteroscedastic
-sandwich whenever labeled residual groups carry unequal variances
-(`sens.py:995` Lagrangian, `sens.py:969` Gauss-Newton), and inverting a
-sandwich is not a scaled reduced Hessian by any scalar, however well
-conditioned the block. Units follow the same care: pyomo `covariance()` carries
-the `2 * sigma_sq` scaling while the core's reduced Hessian is natural-units,
-and a consumer whose objective already carries its own inverse-covariance
-weights wants the unscaled one, so the note must say which `information()`
-returns rather than promising consistency with both. Same
-`hessian=` selector: Lagrangian (default, the exact reduced Hessian, what
-the information-form arrival cost wants) and Gauss-Newton (PSD). Same
-scaling conventions as `covariance()`; the bound handling is shared only in
-part, see Active bounds below.
+It returns natural units, the core's convention, since a consumer whose
+objective already carries its own inverse-covariance weights needs the
+unscaled object; pyomo `covariance()` carries the `2 * sigma_sq` scaling on
+top. `inv(covariance(...))` recovers it only for pooled residuals: with
+labeled residual groups of unequal variance `covariance()` is a
+heteroscedastic sandwich (`sens.py:995` Lagrangian, `sens.py:969`
+Gauss-Newton), whose inverse is no scalar multiple of a reduced Hessian.
+Same `hessian=` selector: Lagrangian (default, the exact reduced Hessian,
+what the information-form arrival cost wants) and Gauss-Newton (PSD). Bound
+handling is in Active bounds below.
 
 **2. `wrt=` block selection on both.** `covariance(model, wrt=block)` and
 `information(model, wrt=block)` reduce onto the given block, any free
@@ -196,11 +192,10 @@ projection does with them, and what gets reported. The barrier curvature study
 its operative sentence is that an active bound deletes a direction and adds no
 intrinsic curvature.
 
-### Three regimes, not two
+### Three regimes
 
 The barrier adds a diagonal `Sigma_i = z_i / s_i = mu / s_i^2` to the primal
-Hessian. Its size depends on the activity regime, not merely on whether a bound
-exists:
+Hessian, sized by the activity regime:
 
 | regime | slack `s` | multiplier `z` | `Sigma` as `mu -> 0` |
 |---|---|---|---|
@@ -208,35 +203,31 @@ exists:
 | strongly active | `-> 0` | `O(1)` | `z^2 / mu -> infinity` |
 | weakly active | `-> 0` | `-> 0` | finite, `-> q` |
 
-The first two the projection handles cleanly. The large term sits exactly on
-the direction a projection deletes, and the vanishing one is `O(mu)`, so under
-strict complementarity the free block is the objective's own curvature and no
-separate scrubbing step is needed.
+Under strict complementarity the projection handles both live cases. The large
+term sits exactly on the direction the projection deletes, the vanishing one is
+`O(mu)`, so the free block is the objective's own curvature and needs no
+scrubbing.
 
-The third breaks that. At a weakly active bound `s = sqrt(mu/q)` and
-`z = sqrt(mu*q)`, so `Sigma = q` exactly, at every `mu`: finite, independent of
-`mu`, and the same order as the objective's own curvature, on a direction whose
-multiplier is near zero. Classified free, the block carries `2q` instead of
-`q`, so the information is doubled and the error does not shrink as `mu` falls.
-Classified pinned, a direction carrying genuine finite information is deleted.
-Neither is right, so activity needs a third outcome rather than a free/pinned
-split, and the strict-complementarity qualifier above is load bearing.
+The weakly active case is the exception, and it is why activity has three
+outcomes. There `s = sqrt(mu/q)` and `z = sqrt(mu*q)`, so `Sigma = q` exactly
+at every `mu`: finite, independent of `mu`, the same order as the objective's
+own curvature, on a direction whose multiplier is near zero. Treated as free,
+the block carries `2q` in place of `q`, an error that does not shrink with
+`mu`. Treated as pinned, a direction carrying finite information is deleted.
+It is flagged instead.
 
 ### Activity detection
 
-Classification is on slack **and** multiplier, never distance to the bound
-alone, with tolerances tied to `mu` (compare `s` to `sqrt(mu)`, and `s*z` to
-`mu`) rather than fixed constants. Both small is weakly active, which is
-flagged: neither silently included nor silently deleted.
+Classification is on slack **and** multiplier, with tolerances tied to `mu`
+(compare `s` to `sqrt(mu)`, and `s*z` to `mu`). Both small is weakly active.
 
-The rule that ships is slack-only (`sens.py:826-827`, `tol = 1e-6 * (1.0 +
-abs(xv))`), which misclassifies exactly that case. The study's Ipopt run at a
-weakly active point returns `x = 5.64e-7` with `z_L = 5.64e-7`, inside that
-tolerance, so a direction with finite information is projected out. Upgrading
-the test changes `covariance()` as well as `information()`, so it is its own
-change rather than something `information()` inherits quietly. A solver that
-relaxed the bound reports a slack that is not the true slack, which the test
-has to account for.
+Distance to the bound alone does not separate the regimes. At the weakly active
+point of the study's Ipopt run, `x = 5.64e-7` with `z_L = 5.64e-7`, which a
+slack-only test at a fixed tolerance reads as pinned, deleting a direction whose
+information is finite. `covariance()` ships that rule today (`sens.py:826-827`,
+`tol = 1e-6 * (1.0 + abs(xv))`), so moving to the joint test is a change to
+both accessors and belongs with this work. A solver that relaxed the bound
+reports a slack that is not the true slack, which the test accounts for.
 
 ### The projection is shared, the embedding is not
 
@@ -256,35 +247,32 @@ metadata, not as matrix entries. A pinned direction has no finite information
 to report; conditional on the bound staying active it is unbounded, and
 unbounded is not something a caller can multiply.
 
-The failure mode under strict complementarity is skipping the projection, not
-picking the wrong Hessian: the bound-active entry of the full
-`(W + Sigma)^{-1}` is a variance collapsing to zero, a constraint artifact read
-as precision.
+Skipping the projection produces the artifact the study warns about: the
+bound-active entry of the full `(W + Sigma)^{-1}` is a variance collapsing to
+zero, a constraint artifact read as precision.
 
 ### What the projection does not remove
 
 `Sigma` is rank-structured onto the deleted directions, so the projection
-handles it. Inertia correction is not. `delta_w * I` is isotropic: it lands on
-the free block and survives the projection. pounce bakes it into the held
-factor (`kkt_perturbations()` in `solver.rs`) and `covariance()` already guards
-on it (`sens.py:814-820`); `information()` inherits the same guardrail. This
-matters most where item 1 claims the headline advantage, since `delta` is
-injected precisely when the Hessian is indefinite or near-singular, which is
-the poorly-identified regime.
+handles it. Inertia correction is isotropic: `delta_w * I` lands on the free
+block and survives. pounce bakes it into the held factor
+(`kkt_perturbations()` in `solver.rs`) and `covariance()` guards on it
+(`sens.py:814-820`); `information()` carries the same guardrail. It matters
+most in the poorly-identified directions, since `delta` is injected precisely
+where the Hessian is indefinite or near-singular.
 
 ### Bound-active variables outside the block
 
-The above concerns bound-active members of the block. One outside it is not
-deleted: its `Sigma` lives in the held factor and enters the Schur complement
-onto the block, so the result is conditional on that bound rather than marginal
-over it. On the study's coupled example `information(wrt=x2)` converges to 2.0,
-conditional on `x1` pinned, where the bound-free marginal is 1.5. Conditional
-information always dominates the marginal, so the caller gets a silently
-over-confident matrix, and unlike a clean free block this number does move with
-`mu` (1.9938 at `mu=1e-2`, 2.0000 at `mu=1e-8`). Both facts qualify the
-Marginal versus conditional section above: the reduction marginalizes over free
-directions and conditions on bound-active ones, so the answer does depend on
-the active set even though it does not depend on the declarations.
+A bound-active variable inside the block is deleted. One outside it is not: its
+`Sigma` stays in the held factor and enters the Schur complement onto the
+block, so the result is conditional on that bound rather than marginal over it.
+On the study's coupled example `information(wrt=x2)` converges to 2.0,
+conditional on `x1` pinned, against a bound-free marginal of 1.5, and the
+number moves with `mu` (1.9938 at `mu=1e-2`, 2.0000 at `mu=1e-8`). Conditional
+information dominates the marginal, so the active set is reported alongside the
+matrix. The reduction marginalizes over free directions and conditions on
+bound-active ones: independent of the declarations, dependent on the active
+set.
 
 ## MHE, the motivating consumer
 
@@ -295,32 +283,29 @@ the state that become the next window's start, one time slice, not the whole
 window.
 
 The reduction is the mechanism; which problem it is applied to is the
-estimator's business, and it is not the whole window. The arrival-cost update
-is one step,
+estimator's. The arrival-cost update is one step,
 
     Gamma_{k+1}(z) = min over the dropped state of
                      [ Gamma_k(x_dropped) + the one stage cost leaving the window ]
 
-subject to the arrival state equalling `z`. Reducing the entire solved window
-onto the arrival state instead would fold the overlap's stage costs into
+subject to the arrival state equalling `z`, so the consumer builds that
+one-step subproblem and reduces it. Windows overlap in `N-1` points, so
+reducing the entire solved window instead folds the overlap's stage costs into
 `Pi^{-1}` while those same residuals stay live in the next window's objective,
-counting every measurement in the overlap twice. On a scalar linear-Gaussian
-three-point window that is 6.28x over-confident, and the factor grows with the
-horizon. So the consumer builds the one-step subproblem and reduces that.
+counting every measurement in the overlap twice: 6.28x over-confident on a
+scalar linear-Gaussian three-point window, growing with the horizon.
 
 Whether the arrival cost carries parameter uncertainty (marginal) or treats
 parameters as known (conditional) is a modeling choice, set by whether the
 parameters are in the block.
 
-A bound-active arrival state is where the reporting convention matters, because
-the consumer cannot reconstruct what the accessor discards. Three candidate
-weights exist for a pinned direction: zero, the barrier's `z^2/mu`, and the
-retained row with `Sigma` removed. On the study's coupled example those are 0,
-1.6e8, and 1.5, and only the third is both finite and meaningful. Only pounce
-can compute it, so reporting zero or dropping the row is lossy in a way the
-caller cannot undo. `information()` should expose the retained-row value
-alongside the activity classification and let the estimator decide what its
-arrival cost does with it.
+A bound-active arrival state is where the reporting convention earns its keep.
+Three weights are available for a pinned direction: zero, the barrier's
+`z^2/mu`, and the retained row with `Sigma` removed, which on the study's
+coupled example are 0, 1.6e8, and 1.5. The third is the finite one, and it is
+computable only inside pounce, so `information()` exposes it alongside the
+activity classification and the estimator decides what its arrival cost does
+with it.
 
 ## Scope boundary: mechanism in pounce, policy in the caller
 
@@ -329,14 +314,13 @@ stateless queries against the held factorization. What a consumer does with the
 numbers is policy and belongs downstream, the same split the active-set
 sensitivity roadmap draws. Which block to ask about, how to build the
 subproblem being reduced, what an arrival cost weights, and what to do when the
-active set churns between windows are all the estimator's, not pounce's. The
-MHE material above is motivation for the mechanism and a check that the
-mechanism suffices, not a specification of the estimator.
+active set churns between windows are the estimator's. The MHE material above
+is motivation for the mechanism and a check that the mechanism suffices, not a
+specification of the estimator.
 
-The one place the boundary is not clean is reporting: an accessor that discards
-a number the caller cannot recompute has made a policy decision by omission.
-That is why the pinned-direction convention is settled here rather than
-downstream.
+Reporting is the one part of the boundary that falls to pounce, since an
+accessor that discards a number the caller cannot recompute has decided policy
+by omission. Hence the pinned-direction convention above.
 
 ## Scope and compatibility
 
@@ -350,31 +334,26 @@ a forward-compatible subset. Nothing here needs to be rushed into v0.9.
 ## Validation
 
 - `information(...)` against `inv(covariance(...))` to tolerance on a
-  well-conditioned block with no active bound and pooled (homoscedastic)
-  residuals; the conditioning advantage on a deliberately ill-identified one.
-  The identity is scoped twice over: with a bound active `covariance()` is
-  singular by construction (the pinned row is zero), so the round trip is
-  undefined rather than ill-conditioned, and with grouped residuals of unequal
-  variance the two objects genuinely differ, so a separate statement of what
-  they satisfy there is owed.
+  well-conditioned block with no active bound and pooled residuals; the
+  conditioning advantage on a deliberately ill-identified one. The identity
+  holds only there: a bound active makes `covariance()` singular (the pinned
+  row is zero) and grouped residuals of unequal variance make the two objects
+  genuinely different.
 - A bound-active fitted variable: the free block matches the same model solved
-  with that variable fixed (which presumes LICQ, since that is a
-  bounds-to-equalities substitution), and the pinned direction is reported as
-  active with its retained-row value rather than as a zero or an inflated
-  entry.
+  with that variable fixed (a bounds-to-equalities substitution, so LICQ is
+  assumed), and the pinned direction reports its retained-row value with the
+  activity classification.
 - Refining the solver's `mu` moves the free-block numbers by `O(mu)` and no
-  more. This is necessary, not a certificate: the weakly-active case is
-  `mu`-invariant and barrier-inflated at once, so pair it with the
-  slack-and-multiplier classification. A block whose reduction conditions on a
-  bound-active variable outside it does move with `mu`, and that is correct
-  rather than a failure.
-- A weakly-active fitted variable (slack and multiplier both near zero): it is
-  flagged as degenerate rather than silently classified free (which would carry
-  `2q`) or pinned (which would drop finite information), and the flag survives
-  a sweep in `mu`.
-- An indefinite Lagrangian free block: `information()` does whatever the note
-  settles on, refuse or fall back to Gauss-Newton, rather than returning a
-  matrix that would make a downstream quadratic unbounded below.
+  more. Necessary, not sufficient: the weakly-active case is `mu`-invariant and
+  barrier-inflated at once, so it pairs with the slack-and-multiplier
+  classification. A block conditioned on a bound-active variable outside it
+  does move with `mu`, which is correct.
+- A weakly-active fitted variable (slack and multiplier both near zero) is
+  flagged, not classified free (carrying `2q`) or pinned (dropping finite
+  information), and the flag survives a sweep in `mu`.
+- An indefinite Lagrangian free block returns the settled outcome, refusal or a
+  Gauss-Newton fallback, not a matrix that makes a downstream quadratic
+  unbounded below.
 - The marginal identity: `inv(state block of covariance(wrt={state,
   params}))` against `information(wrt=state)`, both the parameter-marginal
   state information.
@@ -384,5 +363,5 @@ a forward-compatible subset. Nothing here needs to be rushed into v0.9.
 - Lagrangian versus Gauss-Newton agree on a linear model and in the
   small-residual limit; the Lagrangian can go indefinite where Gauss-Newton
   stays PSD.
-- MHE recursion sanity: the posterior information equals prior plus data on a
-  linear-Gaussian window.
+- MHE sanity: reducing a linear-Gaussian one-step subproblem onto its arrival
+  state matches the closed-form update.
