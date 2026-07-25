@@ -123,6 +123,11 @@ active variable inside the band is `O(1)`, while the edges move as
 the caller in every case, since which region a variable falls in is not
 stable near a transition.
 
+The classifier requires `bound_relax_factor = 0`. The default lets a converged
+primal sit outside its bound by `factor · max(1, |bound|)`, so `s` is not the
+distance to the user's bound and `Σ = z/s` is mis-scaled, badly when the bound
+is large in magnitude. `s·z` against `μ` is the detector.
+
 This is new code in the Rust core, alongside `classify_working_set`
 (`crates/pounce-sensitivity/src/convenience.rs`, exposed through
 `crates/pounce-py`), which answers the membership question on fixed
@@ -265,6 +270,20 @@ a weakly active bound exactly as `covariance()` does now.
 - Item 0's ratio across a `μ` sweep on all three regimes: `O(μ)`, `O(1)` and
   `O(1/μ)`, with the weakly active value fixed as `μ` falls. Against
   `diagnose_bounds` on the same points, including one it calls `ambiguous`.
+- Item 0 under variable scaling: hold the regime and move the objective's
+  curvature away from the bound's scale. The weakly active ratio stays at `1`;
+  the other two drift toward the band, and at loose `μ` they enter it, which
+  must come back as `ambiguous` rather than as a confident wrong regime.
+- One-sided finite differences at a transition, against the classification and
+  against `covariance()`'s free block. A symmetric difference there returns the
+  barrier's smoothing value rather than either true one-sided derivative, so it
+  passes while hiding the active-set change; only the one-sided pair shows the
+  two disagree. Run with `bound_relax_factor = 0`, or the slacks being
+  classified are not distances to the user's bounds.
+- `information()` on a problem where the solve reports non-zero
+  `kkt_perturbations`: the inertia-correction guardrail fires, and the returned
+  block differs from the unregularized one by the isotropic `δ_w` and nothing
+  else.
 - `information(...)` against `inv(covariance(...))` to tolerance on a
   well-conditioned block with no active bound and pooled residuals; the
   conditioning advantage on a deliberately ill-identified one. The identity
