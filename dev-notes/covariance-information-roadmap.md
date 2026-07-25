@@ -141,15 +141,17 @@ $S = H_{AA} - H_{AF} H_{FF}^{-1} H_{FA}$ for the reduction onto the pinned
 set. Each accessor returns a matrix over the whole block; the columns are the
 row a fitted variable $i$ gets in each:
 
-| status | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` row | `information()` row |
-|---|---|---|---|---|---|---|
-| inactive | `O(1)` | `→ 0` | `μ/s² → 0` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
-| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | $A$ | $0$ | $S_{iA}$ |
-| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
-| ambiguous | n/a | n/a | ratio in a band gap | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
-| unidentified | n/a | n/a | curvature below scale | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
+| status | `Σ` as `μ → 0` | $i$ in | `covariance()` row | `information()` row |
+|---|---|---|---|---|
+| inactive | `O(μ)` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
+| strongly active | `O(1/μ)` | $A$ | $0$ | $S_{iA}$ |
+| weakly active | `O(1)` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
+| ambiguous | not separated | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
+| unidentified | not applicable | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
 
-The `Σ` column is what skipping the subtraction in $H$ would cost.
+The `Σ` column is what skipping the subtraction in $H$ would cost. It is the
+magnitude of the barrier diagonal, not a test: item 0 classifies on `Σ/q`, and
+on neither `s` nor `z` alone.
 
 $S$ carries two caveats the table cannot. It is conditional on the rest of
 $A$: with more than one pinned variable, $S_{ii}$ holds the others at their
@@ -160,8 +162,7 @@ of `eps · Σ`. So $S$ loses roughly `log10(Σ)` digits, and gets worse as the
 solve tightens, the opposite direction from the re-solve `ambiguous` asks
 for. Free rows and weakly active variables are unaffected.
 
-The classification comes back with the matrix in every case, and the last two
-rows warn as well: `ambiguous` that re-solving tighter will settle it, which
+The last two rows warn as well as return: `ambiguous` that re-solving tighter will settle it, which
 works because the drift into the band is `O(1)` while the edges move as
 `sqrt(μ)`; `unidentified` that the variance is large rather than small. $F$
 is the conservative side for `covariance()` and the anti-conservative side
