@@ -76,9 +76,10 @@ of which `covariance()` is the Pyomo-model sibling.
 
 The motivating consumer is moving horizon estimation. Its information-form
 arrival cost is `Γ(x0) = ½ (x0 − x̂)ᵀ Π⁻¹ (x0 − x̂)`, where the
-weighting `Π⁻¹` is the reduced Hessian marginalized onto the arrival
-state, the Lagrangian information, not the covariance. That un-inverted,
-per-block object is what the roadmap below adds.
+weighting `Π⁻¹` is the reduced Hessian of the one-step subproblem (the
+previous arrival cost plus the stage leaving the window) marginalized onto the
+arrival state, the Lagrangian information, not the covariance. That
+un-inverted, per-block object is what the roadmap below adds.
 
 ## Roadmap
 
