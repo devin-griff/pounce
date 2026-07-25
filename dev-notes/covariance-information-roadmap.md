@@ -72,9 +72,9 @@ of which `covariance()` is the Pyomo-model sibling.
 
 ## Roadmap
 
-Items 1 to 3 are additive pyomo surface and can land on their own, running on
-the shipped classifier, which is correct for interior solutions. Items 0 and 4
-are what make the answer right at a bound, and item 4 consumes item 0.
+Items 2 to 4 are additive pyomo surface and can land on their own, running on
+the shipped classifier, which is correct for interior solutions. Items 0 and 1
+are what make the answer right at a bound, and item 1 consumes item 0.
 
 Notation used throughout. `Σ_i = z^L_i/s^L_i + z^U_i/s^U_i` is the barrier
 diagonal on variable `i`, summed over both bounds. $W$ is the primal Hessian
@@ -135,71 +135,7 @@ Why it is shaped that way:
   `H_ii` when the row is a bound in disguise, so a limit written either way
   lands in the same regime by construction (jkitchin/pounce#362).
 
-**1. `information()`, the un-inverted sibling of `covariance()`.** Returns the
-reduced Hessian over the block, formed as the Schur complement onto the
-block's rows off the held factor rather than by inverting the covariance.
-Natural units, the core's convention; pyomo `covariance()` carries the `2σ²`
-on top. Same `hessian=` selector, Lagrangian (default) or Gauss-Newton.
-
-Three things it has to do that `covariance()` does not:
-
-- **Slice the Gauss-Newton product last.** `JᵀJ` is formed over all fitted
-  variables and restricted to $F$ afterwards. It slices first today, so the
-  pinned rows are gone before the matrix exists and item 4's $S$ has nothing
-  to build from.
-- **Return the pinned set as $S$, not as zeros.** `covariance()` embeds a
-  pinned variable as a zero row, which reads as zero variance; the same zeros
-  in an information matrix read as zero information. Item 4 gives membership
-  and the expression.
-- **Return an indefinite Lagrangian block as computed**, warning and naming
-  Gauss-Newton as the PSD alternative. Refusing would withhold a finding: the
-  point is not a minimum, or the model is over-parameterized.
-
-It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`),
-which bites here because `δ_w I` is isotropic and so, unlike `Σ`, lands on the
-free block and survives the projection.
-
-**2. `wrt=` block selection.** `covariance(model, wrt=block)` and
-`information(model, wrt=block)` reduce onto any block of free variables off
-the held factor, post-solve, since the factor covers every free variable.
-`declare_fitted` is the default block when `wrt=` is omitted, so
-`covariance(model)` behaves exactly as in v0.9. The block accepts a slice
-(`m.x[t, :]`) or a `(Var, time)` pair, not only a hand-listed VarData set.
-
-Each call re-reduces onto its own argument, so one solve serves as many
-blocks as you ask about, and each gets that block's marginal.
-
-With one exception, which is returned rather than hidden. A strongly active
-variable outside the block is not deleted: its `Σ` stays in the held factor
-and drives the coupling through it to zero as `μ` falls, so the block
-converges to the value conditional on that bound rather than the marginal
-over it, and its numbers move with `μ` on the way. The active set comes back
-with the matrix.
-
-**3. `retain_kkt()`, a factor-retention switch decoupled from
-declarations.** The solve factors the KKT to solve the NLP; the only question
-is whether that factor is kept for post-solve queries. Today any declaration
-keeps it (`declare_sens_param`, `declare_fitted`, or `declare_residual`).
-`retain_kkt()` keeps it with no declaration at all, which is what item 2's
-declaration-free flow needs: the MHE case, where the arrival state and the
-parameters are each queried by `wrt=` and neither is a default. It defaults
-off, so a solve with no sensitivity pays nothing.
-
-| setup | factor kept | `covariance(model)` | `covariance(model, wrt=T)` |
-|---|---|---|---|
-| nothing | no | error | error |
-| `declare_fitted(S)` | yes | over S | over T |
-| `retain_kkt()` only | yes | error, no default | over T |
-| `retain_kkt()` + `declare_fitted(S)` | yes | over S | over T |
-
-The columns show `covariance()`; `information()` follows the same rows, since
-factor retention and the default block are accessor-agnostic. `gradient()` and
-`estimate()` are unaffected, since the `declare_sens_param` they require
-already keeps the factor. A block queried under that declaration alone comes
-out conditional on the pinned parameter, since fixing an input conditions
-rather than marginalizes.
-
-**4. Membership and dispositions.** What `covariance()` and `information()`
+**1. Membership and dispositions.** What `covariance()` and `information()`
 each return for a variable, given item 0's classification. Write
 $S = H_{AA} - H_{AF} H_{FF}^{-1} H_{FA}$ for the reduction onto the pinned
 set. Each accessor returns a matrix over the whole block; the columns are the
@@ -248,6 +184,70 @@ normal is a single fitted coordinate, as the bound rewrite in
 jkitchin/pounce#357 produces, the existing disposition applies and the two
 spellings agree.
 
+**2. `information()`, the un-inverted sibling of `covariance()`.** Returns the
+reduced Hessian over the block, formed as the Schur complement onto the
+block's rows off the held factor rather than by inverting the covariance.
+Natural units, the core's convention; pyomo `covariance()` carries the `2σ²`
+on top. Same `hessian=` selector, Lagrangian (default) or Gauss-Newton.
+
+Three things it has to do that `covariance()` does not:
+
+- **Slice the Gauss-Newton product last.** `JᵀJ` is formed over all fitted
+  variables and restricted to $F$ afterwards. It slices first today, so the
+  pinned rows are gone before the matrix exists and item 1's $S$ has nothing
+  to build from.
+- **Return the pinned set as $S$, not as zeros.** `covariance()` embeds a
+  pinned variable as a zero row, which reads as zero variance; the same zeros
+  in an information matrix read as zero information. Item 1 gives membership
+  and the expression.
+- **Return an indefinite Lagrangian block as computed**, warning and naming
+  Gauss-Newton as the PSD alternative. Refusing would withhold a finding: the
+  point is not a minimum, or the model is over-parameterized.
+
+It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`),
+which bites here because `δ_w I` is isotropic and so, unlike `Σ`, lands on the
+free block and survives the projection.
+
+**3. `wrt=` block selection.** `covariance(model, wrt=block)` and
+`information(model, wrt=block)` reduce onto any block of free variables off
+the held factor, post-solve, since the factor covers every free variable.
+`declare_fitted` is the default block when `wrt=` is omitted, so
+`covariance(model)` behaves exactly as in v0.9. The block accepts a slice
+(`m.x[t, :]`) or a `(Var, time)` pair, not only a hand-listed VarData set.
+
+Each call re-reduces onto its own argument, so one solve serves as many
+blocks as you ask about, and each gets that block's marginal.
+
+With one exception, which is returned rather than hidden. A strongly active
+variable outside the block is not deleted: its `Σ` stays in the held factor
+and drives the coupling through it to zero as `μ` falls, so the block
+converges to the value conditional on that bound rather than the marginal
+over it, and its numbers move with `μ` on the way. The active set comes back
+with the matrix.
+
+**4. `retain_kkt()`, a factor-retention switch decoupled from
+declarations.** The solve factors the KKT to solve the NLP; the only question
+is whether that factor is kept for post-solve queries. Today any declaration
+keeps it (`declare_sens_param`, `declare_fitted`, or `declare_residual`).
+`retain_kkt()` keeps it with no declaration at all, which is what item 3's
+declaration-free flow needs: the MHE case, where the arrival state and the
+parameters are each queried by `wrt=` and neither is a default. It defaults
+off, so a solve with no sensitivity pays nothing.
+
+| setup | factor kept | `covariance(model)` | `covariance(model, wrt=T)` |
+|---|---|---|---|
+| nothing | no | error | error |
+| `declare_fitted(S)` | yes | over S | over T |
+| `retain_kkt()` only | yes | error, no default | over T |
+| `retain_kkt()` + `declare_fitted(S)` | yes | over S | over T |
+
+The columns show `covariance()`; `information()` follows the same rows, since
+factor retention and the default block are accessor-agnostic. `gradient()` and
+`estimate()` are unaffected, since the `declare_sens_param` they require
+already keeps the factor. A block queried under that declaration alone comes
+out conditional on the pinned parameter, since fixing an input conditions
+rather than marginalizes.
+
 ## Preconditions
 
 Four conditions underwrite the whole surface, and the roadmap handles two of
@@ -255,7 +255,7 @@ them explicitly.
 
 Strict complementarity failing is the weakly active case, which item 0 detects
 and reports rather than assuming away. An active set that changes under
-perturbation is item 2's conditional-versus-marginal distinction, which is
+perturbation is item 3's conditional-versus-marginal distinction, which is
 stated with the matrix.
 
 The other two are assumed. LICQ is what makes the active-set KKT nonsingular,
@@ -263,19 +263,19 @@ and it is the precondition for the roadmap's own validation, since matching a
 free block against the same model solved with a variable fixed is a
 bounds-to-equalities substitution. Second-order sufficiency is what makes the
 reduced Hessian positive definite on the free space; when it fails the result
-is the indefinite free block item 1 returns with a warning, which is a
+is the indefinite free block item 2 returns with a warning, which is a
 diagnostic rather than an error but is not a covariance.
 
 ## Scope and compatibility
 
-Items 1 to 3 are additive: `information()` is a new function, `wrt=` (with its
+Items 2 to 4 are additive: `information()` is a new function, `wrt=` (with its
 slice and `(Var, time)` block forms) is a new optional keyword, and
 `retain_kkt()` is new surface. No signature changes, and v0.9
 `covariance(model)` with no `wrt=` reduces onto the declared set, which is
 exactly the v0.10 no-argument default, so the v0.9 surface is a
 forward-compatible subset.
 
-Items 0 and 4 are the exception. Item 4 changes which variables
+Items 0 and 1 are the exception. Item 1 changes which variables
 `covariance()` projects out, so a model with a weakly active bound gets
 different numbers than v0.9 returns. Item 0 is Rust core work rather than
 pyomo surface, because the bound multipliers, `μ` and the Hessian diagonal
@@ -284,7 +284,7 @@ bounds, and the held factor is barrier-augmented, so `kkt_solve` inverts $W$
 and neither `Σ` nor $H$ can be recovered above it.
 
 Until they land, `information()` inherits the shipped slack-only
-classification, so items 1 to 3 are complete for interior solutions and misfile
+classification, so items 2 to 4 are complete for interior solutions and misfile
 a weakly active bound exactly as `covariance()` does now.
 
 ## Validation
@@ -300,7 +300,7 @@ a weakly active bound exactly as `covariance()` does now.
   the reference implementation of the shape, not a primitive to call.
 - The classification itself across the `μ` sweep, not just the numbers: record
   every label change. An `ambiguous` variable must settle into a regime as `μ`
-  tightens, which is what item 0's re-solve instruction promises, and a
+  tightens, which is what item 1's re-solve instruction promises, and a
   variable crossing between $F$ and $A$ changes the returned matrix's rank,
   which a caller holding a block across two solves has to see.
 - Item 0 under variable scaling: hold the regime and move the objective's
