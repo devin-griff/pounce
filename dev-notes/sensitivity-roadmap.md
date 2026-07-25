@@ -80,14 +80,6 @@ on real problems. Two properties matter for this roadmap:
    correction.** It is evaluated against the factorization at the final
    `mu` but carries no explicit `mu`-correction term.
 
-The barrier diagonal `Sigma` stays in throughout. The companion covariance
-roadmap subtracts it, because reading a block of `(W+Sigma)^-1` as a variance
-reads barrier curvature as data. Solving the full primal-dual system is the
-opposite case: `Sigma` is used consistently across the complementarity rows
-and is what produces the correct zero motion normal to an active bound.
-Removing it here would return a step that violates the bound. Only item 0's
-classifier needs `Sigma` separately, to form the ratio.
-
 ## The reference: what sIPOPT implements, and the gap
 
 From Pirnay, López-Negrete & Biegler, *Optimal sensitivity based on
@@ -181,13 +173,12 @@ and the barrier diagonal all have to be exposed through `crates/pounce-py`
 first, and it gates this item and item 3. The breakpoint half has no such
 dependency.
 
-Where the predictor and the active-set KKT sensitivity disagree, the report
-says so and the active-set value is the one to trust. The gap is finite `mu`,
-solver-relaxed bounds, or inertia regularization mixed in, so the comparison
-is only meaningful with the original Hessian, `bound_relax_factor = 0`, and
-`kkt_perturbations` all zero. The report already carries `mu` and the
-perturbations are on the solver, so it can say which of the three is in play
-rather than leaving the caller to guess.
+The report also carries the provenance of the number it returns: the `mu` it
+was evaluated at, whether the solver relaxed the bounds, and whether
+`kkt_perturbations` is non-zero. Those are the three things that separate the
+predictor from the exact active-set value, they are all cheap, and without
+them a caller comparing against a re-solve cannot tell which one explains the
+gap.
 
 **1. Fix-relax + `mu`-correction → sIPOPT parity.** Two changes together
 constitute full parity. **(a) Fix-relax** (the substantial one): upgrade
