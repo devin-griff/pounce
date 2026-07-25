@@ -161,10 +161,8 @@ rather than marginalizes.
 
 **4. Joint activity classification.** `covariance()` and `information()`
 classify a bound as active on slack **and** multiplier, with tolerances tied to
-`μ` (compare `s` to `sqrt(μ)`, and `s·z` to `μ`). The barrier's diagonal is
-what makes the multiplier necessary. It sums over both bounds,
-`Σ_i = z^L_i/s^L_i + z^U_i/s^U_i`, but a variable is active at one at most and
-the slack side contributes `μ/s²`, so the active bound sets the regime.
+`μ` (compare `s` to `sqrt(μ)`, and `s·z` to `μ`). The barrier diagonal sums
+over both bounds, `Σ_i = z^L_i/s^L_i + z^U_i/s^U_i`.
 
 Write $W$ for the primal Hessian block the held factor carries, $H = W - \Sigma$
 for the Lagrangian one, $F$ for the variables the reduction keeps and $A$ for
@@ -178,12 +176,7 @@ block; the columns are the row a fitted variable $i$ gets in each:
 | strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | $A$ | $0$ | $S_{iA}$ |
 | weakly active | `→ 0` | `→ 0` | finite, `O(1)` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
 
-Three regimes, two dispositions: the first and last rows agree, so weakly
-active is not a third treatment but the case a slack-only test misfiles into
-$A$. $\Sigma$ comes off in every row, since that is what makes $H$ the
-Lagrangian Hessian rather than the barrier one; the `Σ` column is what skipping
-that subtraction would cost, `O(μ)` and harmless when inactive, a factor when
-weakly active, unbounded when pinned.
+The `Σ` column is what skipping the subtraction in $H$ would cost.
 
 $S$ is conditional on the rest of $A$: with more than one pinned variable,
 $S_{ii}$ holds the others at their bounds rather than marginalizing over them.
@@ -193,25 +186,15 @@ side of a tolerance a variable falls on is not stable.
 
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
 `tol = 1e-6 * (1.0 + abs(xv))`), which pins a weakly active variable and
-deletes its information, so this is the one item that changes `covariance()`'s
-numbers rather than only adding surface. A solver that relaxed the bound
-reports a slack that is not the true slack.
+deletes its information.
 
-Both halves of this item need core surface that does not exist. The joint test
-needs the bound multipliers $z^L$ and $z^U$ at the solution, and subtracting
-$\Sigma$ needs the barrier diagonal. `_Session` captures only the primal $x$,
-and `Solver` exposes `kkt_dim`, `kkt_solve`, `kkt_perturbations`,
-`multiplier_rows` and `reduced_hessian`, none of which carry either. The held
-factor is barrier-augmented (`sigma_x` enters the augmented system as `d_x` in
-`kkt/pd_full_space_solver.rs`), so what `kkt_solve` inverts is $W$, and there
-is no path from Python to $H$. That subtraction is invisible in v0.9 only
-because the slack-only test already deletes every variable whose $\Sigma$ is
-non-negligible; keeping the weakly active ones is what creates the need.
-
-The classifier itself exists in the core: `pounce.classify_working_set` takes
-`z_l` and `z_u` alongside the slacks and returns the joint classification. It
-thresholds on fixed `mult_tol` and `primal_tol` rather than on `μ`, so the
-`μ`-tied comparison above is the part still to build.
+Both halves need core surface that does not exist. The joint test needs the
+bound multipliers at the solution, and $H$ needs the barrier diagonal; neither
+reaches Python, and the held factor is barrier-augmented (`sigma_x` enters the
+augmented system as `d_x` in `kkt/pd_full_space_solver.rs`), so `kkt_solve`
+inverts $W$. The classifier itself exists: `pounce.classify_working_set` takes
+`z_l` and `z_u` and returns the joint classification, thresholded on fixed
+`mult_tol` and `primal_tol` rather than on `μ`.
 
 ## Scope and compatibility
 
