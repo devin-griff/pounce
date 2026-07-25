@@ -169,11 +169,11 @@ Write $W$ for the primal Hessian block the held factor carries, $H = W - \Sigma$
 for the Lagrangian one, $F$ for the free directions and $A$ for the pinned.
 What each accessor gives for a fitted variable $i$:
 
-| bound regime | `s` | `z` | `Σ` as `μ → 0` | `covariance()` | `information()` |
-|---|---|---|---|---|---|
-| inactive | `O(1)` | `→ 0` | `μ/s² → 0` | $2\sigma^2 (H_{FF}^{-1})_{ii}$ | $H_{iF}$ |
-| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | $0$ | $H_{ii} - H_{iF} H_{FF}^{-1} H_{Fi}$ |
-| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | $2\sigma^2 (H_{FF}^{-1})_{ii}$ | $H_{iF}$ |
+| bound regime | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` | `information()` |
+|---|---|---|---|---|---|---|
+| inactive | `O(1)` | `→ 0` | `μ/s² → 0` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{ii}$ | $H_{iF}$ |
+| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | $A$ | $0$ | $H_{ii} - H_{iF} H_{FF}^{-1} H_{Fi}$ |
+| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{ii}$ | $H_{iF}$ |
 
 Three regimes, two dispositions: the first and last rows agree, so weakly
 active is not a third treatment but the case a slack-only test misfiles into
