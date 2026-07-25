@@ -272,11 +272,13 @@ slice and `(Var, time)` block forms) is a new optional keyword, and
 exactly the v0.10 no-argument default, so the v0.9 surface is a
 forward-compatible subset.
 
-Item 0 is new code in the Rust core, alongside `classify_working_set`
-(`crates/pounce-sensitivity/src/convenience.rs`, exposed through
-`crates/pounce-py`), which answers the membership question on fixed
-`mult_tol` and `primal_tol` and is the only thing in this area shipping
-today. It needs the solver to expose the bound multipliers, `μ`, and the
+Items 0 and 4 are the exception. Item 4 changes which variables
+`covariance()` projects out, so a model with a weakly active bound gets
+different numbers than v0.9 returns. Item 0 is Rust core work, alongside
+`classify_working_set` (`crates/pounce-sensitivity/src/convenience.rs`,
+exposed through `crates/pounce-py`), which answers the membership question on
+fixed `mult_tol` and `primal_tol` and is the only thing in this area shipping
+today. It needs the solver to expose the bound multipliers, `μ` and the
 Hessian diagonal: the pyomo session carries only the primal and the bounds,
 and the held factor is barrier-augmented (`sigma_x` enters the augmented
 system as `d_x` in `kkt/pd_full_space_solver.rs`), so `kkt_solve` inverts $W$
@@ -285,18 +287,13 @@ and neither `Σ` nor $H$ is recoverable above it. `diagnose_bounds`
 implementation of the shape and the oracle to validate against, not a
 primitive to call.
 
-It also requires `bound_relax_factor = 0`, and checks it rather than
+Item 0 also requires `bound_relax_factor = 0`, and checks it rather than
 documenting it, since the default lets a converged primal sit outside its
 bound and a user hits that by doing nothing. Two more conditions are checked
 at every call rather than only in the tests: `s·z` away from `μ`, meaning the
 point is off the central path or the bound was relaxed, and `Σ_i/|H_ii|`
 non-negligible on a variable the reduction kept, meaning barrier curvature
 survived the projection.
-
-Items 0 and 4 are the exception. Item 0 is Rust core work, since the multipliers,
-`μ` and the barrier diagonal all have to reach Python before anything can
-classify. Item 4 then changes which variables `covariance()` projects out, so
-a model with a weakly active bound gets different numbers than v0.9 returns.
 
 Until they land, `information()` inherits the shipped slack-only
 classification, so items 1 to 3 are complete for interior solutions and misfile
