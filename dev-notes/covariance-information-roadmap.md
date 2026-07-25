@@ -82,9 +82,9 @@ block the held factor carries and $H = W - \Sigma$ is the Lagrangian one, so
 `H_ii` is that variable's objective curvature with the barrier removed. $F$ is
 the set of variables the reduction keeps, $A$ the ones it projects out.
 
-**0. The bound classifier → Rust core.** Which regime each bounded variable is in,
-decided by the ratio of the barrier curvature on it to the objective's own
-curvature there, `Σ_i / |H_ii|`. That ratio is `O(μ)` when the bound is
+**0. The activity classifier → Rust core.** Which regime each bounded variable
+is in, decided by the ratio of the barrier curvature on it to the objective's
+own curvature there, `Σ_i / |H_ii|`. That ratio is `O(μ)` when the bound is
 inactive, `O(1)` when weakly active, and `O(1/μ)` when strongly active, so the
 three separate by orders of magnitude at any `μ` and the weakly active case
 sits at a fixed place rather than moving with the solve.
@@ -129,6 +129,15 @@ active variable inside the band is `O(1)`, while the edges move as
 `sqrt(μ)`, so tightening separates them. The classification is returned to
 the caller in every case, since which region a variable falls in is not
 stable near a transition.
+
+Inequality constraint rows classify the same way. A row carries a slack and a
+multiplier with `s_j z_j = μ` exactly as a bound does, so `Σ_j = z_j/s_j` and
+the three scalings are unchanged. Only the denominator differs: a variable's
+is `H_ii`, the objective's curvature in that coordinate, and a row's is the
+curvature along its normal, $\nabla g_j^\top H \nabla g_j / \|\nabla g_j\|^2$.
+That reduces to `H_ii` when the row is a bound in disguise, so a limit written
+as a bound and the same limit written as a constraint land in the same regime
+by construction rather than by coincidence (jkitchin/pounce#362).
 
 **1. `information()`, the un-inverted sibling of `covariance()`.** Returns the
 information matrix over the block: the reduced Hessian, formed as the Schur
@@ -245,6 +254,22 @@ number that is fine.
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
 `tol = 1e-6 * (1.0 + abs(xv))`), which pins a weakly active variable and
 deletes its information.
+
+An active constraint row is classified but not projected, and the reason is
+that the table above is indexed by coordinate. A bound deletes a coordinate;
+a row removes a direction. `A ≤ cap` happens to pin the coordinate `A`, so
+deleting it is right, but `A + B ≤ 1` pins a combination and deleting either
+coordinate is wrong. Handling the general case means the reduced Hessian on
+the null space of the active Jacobian, which is a different construction from
+restricting to the free coordinates, and it is out of scope for v0.10 on that
+basis rather than because it does not matter.
+
+So a fitted variable held by an active row is returned with its
+classification and its warning, which is the signal that is missing today
+(jkitchin/pounce#362), and with the unprojected number. Where the row's
+normal is a single fitted coordinate, which is what the bound rewrite in
+jkitchin/pounce#357 produces, the existing disposition applies and the two
+spellings agree.
 
 ## Preconditions
 
