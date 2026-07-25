@@ -144,6 +144,14 @@ scaling on top. Same `hessian=` selector, Lagrangian (default) or Gauss-Newton
 slice to the free block afterwards: it slices first today, so the pinned rows
 are gone before the matrix exists and item 4's `S` has nothing to build from.
 
+An indefinite Lagrangian free block is returned as computed, with a warning
+naming Gauss-Newton as the PSD alternative. It is the honest curvature and
+itself a finding, that the point is not a minimum or the model is
+over-parameterized, so refusing withholds a diagnostic. Substituting
+Gauss-Newton silently would return something other than the `hessian=` the
+caller asked for, and a consumer that needs PSD, such as an arrival cost, can
+ask for it.
+
 Pinned variables are projected out: the information matrix is restricted to the
 free block, the square block over the variables that remain, which is
 `covariance()`'s existing construction. The embedding differs.
@@ -302,9 +310,8 @@ a weakly active bound exactly as `covariance()` does now.
 - `s·z` against `μ` on every bounded variable. A mismatch means the point is
   off the central path or the solver relaxed the bound, and the slack being
   classified is not the true slack.
-- An indefinite Lagrangian free block returns the settled outcome, refusal or a
-  Gauss-Newton fallback, not a matrix that makes a downstream quadratic
-  unbounded below.
+- An indefinite Lagrangian free block is returned as computed, with the
+  warning, and is not silently replaced by the Gauss-Newton form.
 - The marginal identity: `inv(state block of covariance(wrt={state,
   params}))` against `information(wrt=state)`, both the parameter-marginal
   state information.
