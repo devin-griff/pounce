@@ -107,14 +107,21 @@ scalings, so the weakly active case sits at the centre with
 edges close inside the inner band and everything not clearly outside is
 `ambiguous`, which is the honest answer at that tolerance.
 
-The inner band is wider than the ideal case needs, since `Σ = H_ii` exactly
-at weak activity and the ratio is `1` there whatever the problem scaling.
-It is set for the other two, which carry scale: `μ/(s² H_ii)` and
-`z²/(μ H_ii)` drift toward the centre when the objective's curvature is far
-from the bound's own scale, and the drift is what the gaps absorb.
+The inner band is fixed and the outer edges are not, because they absorb
+different things. `Σ = H_ii` exactly at weak activity in the decoupled case,
+so the ratio is `1` there whatever `μ` and whatever the problem scaling, and
+what the band has to tolerate is the coupling drift
+`Σ_i = H_ii + \sum_{j \ne i} H_{ij} x_j / x_i`, which is `O(1)` and does not
+move with `μ`. Scaling the band with `μ` would widen it as the solve tightens,
+swallowing more of the other two regimes exactly where the classification
+should be sharpest.
 
-The classification is returned to the caller in every case, since which
-region a variable falls in is not stable near a transition.
+`ambiguous` means the regime is undetermined at this `μ`, and the fix is to
+re-solve at a tighter tolerance: the drift that puts an inactive or strongly
+active variable inside the band is `O(1)`, while the edges move as
+`sqrt(μ)`, so tightening separates them. The classification is returned to
+the caller in every case, since which region a variable falls in is not
+stable near a transition.
 
 This is new code in the Rust core, alongside `classify_working_set`
 (`crates/pounce-sensitivity/src/convenience.rs`, exposed through
@@ -224,11 +231,12 @@ The `Σ` column is what skipping the subtraction in $H$ would cost.
 $S$ is conditional on the rest of $A$: with more than one pinned variable,
 $S_{ii}$ holds the others at their bounds rather than marginalizing over them.
 
-`ambiguous` goes to $F$ with the weakly active row. That is the conservative
-side for `covariance()`, which reports a variance rather than asserting zero,
-and the anti-conservative side for `information()`, which reports full
-information on a variable that may not have it. Item 0's classification is
-what carries the doubt either way.
+`ambiguous` goes to $F$ with the weakly active row, and warns that the regime
+is undetermined at this `μ` and that re-solving tighter will settle it. That
+is the conservative side for `covariance()`, which reports a variance rather
+than asserting zero, and the anti-conservative side for `information()`,
+which reports full information on a variable that may not have it, so the
+warning is doing real work rather than annotating a number that is fine.
 
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
 `tol = 1e-6 * (1.0 + abs(xv))`), which pins a weakly active variable and
