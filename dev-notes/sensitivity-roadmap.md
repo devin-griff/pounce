@@ -1,4 +1,4 @@
-# Active-set-aware parametric sensitivity: roadmap proposal
+# Active-set-aware parametric sensitivity: v0.10 roadmap
 
 **Status: roadmap proposal for pyomo-pounce, targeting v0.10.** This note
 scopes extending pyomo-pounce's `estimate()` to handle active-set changes,
