@@ -270,6 +270,11 @@ a weakly active bound exactly as `covariance()` does now.
 - Item 0's ratio across a `μ` sweep on all three regimes: `O(μ)`, `O(1)` and
   `O(1/μ)`, with the weakly active value fixed as `μ` falls. Against
   `diagnose_bounds` on the same points, including one it calls `ambiguous`.
+- The classification itself across the `μ` sweep, not just the numbers: record
+  every label change. An `ambiguous` variable must settle into a regime as `μ`
+  tightens, which is what item 0's re-solve instruction promises, and a
+  variable crossing between $F$ and $A$ changes the returned matrix's rank,
+  which a caller holding a block across two solves has to see.
 - Item 0 under variable scaling: hold the regime and move the objective's
   curvature away from the bound's scale. The weakly active ratio stays at `1`;
   the other two drift toward the band, and at loose `μ` they enter it, which
