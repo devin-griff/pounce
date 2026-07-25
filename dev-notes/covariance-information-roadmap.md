@@ -83,6 +83,40 @@ un-inverted, per-block object is what the roadmap below adds.
 
 ## Roadmap
 
+Item 0 is core work and everything below consumes it. Items 1 to 3 are
+additive pyomo surface and can land before it, on the shipped classifier,
+which is correct for interior solutions. Item 4 cannot.
+
+**0. The bound classifier → core.** Which regime each bounded variable is in,
+decided by the ratio of the barrier curvature on it to the objective's own
+curvature there, `Σ_i / |H_ii|`. That ratio is `O(μ)` when the bound is
+inactive, `O(1)` when weakly active, and `O(1/μ)` when strongly active, so the
+three separate by orders of magnitude at any `μ` and the weakly active case
+sits at a fixed place rather than moving with the solve.
+
+Thresholding `s` and `z` separately does not work at any constant. Both are
+`O(sqrt(μ))` at weak activity, so a fixed threshold reports the regime only
+when `μ` lands in its band. `sqrt(μ)` as the threshold fails the other way, by
+putting the case the test exists to find exactly on it.
+
+Statuses are `inactive`, `weakly active`, `strongly active`, and `ambiguous`
+for a ratio between the bands, returned to the caller in every case, since
+which band a variable falls in is not stable near a transition.
+
+The shape is `diagnose_bounds`
+(`python/notebooks/barrier_curvature_sensitivity.ipynb` §5), which already
+computes the ratio and prints it, though it sets its status from fixed `s` and
+`z` thresholds instead. Its signature is the core-surface ask: `x`, `lb`, `ub`,
+`z_lower`, `z_upper`, `mu`, and the original Lagrangian Hessian. `_Session`
+captures only `x`, `x_l` and `x_u`, and the held factor is barrier-augmented
+(`sigma_x` enters the augmented system as `d_x` in
+`kkt/pd_full_space_solver.rs`), so `kkt_solve` inverts $W$ and neither `Σ` nor
+$H$ is reachable from Python today. `pounce.classify_working_set` answers the
+membership question on fixed `mult_tol` and `primal_tol`, not the regime one.
+
+The other consumer is the active-set sensitivity roadmap, whose item 0 returns
+this classification in its report and whose item 3 fires on it.
+
 **1. `information()`, the un-inverted sibling of `covariance()`.** Returns the
 information matrix over the block: the reduced Hessian, formed as the Schur
 complement onto the block's rows off the held factor, not by inverting the
@@ -148,10 +182,10 @@ already keeps the factor. A block queried under that declaration alone comes
 out conditional on the pinned parameter, since fixing an input conditions
 rather than marginalizes.
 
-**4. Joint activity classification.** `covariance()` and `information()`
-classify a bound as active on slack **and** multiplier, with tolerances tied to
-`μ` (compare `s` to `sqrt(μ)`, and `s·z` to `μ`). The barrier diagonal sums
-over both bounds, `Σ_i = z^L_i/s^L_i + z^U_i/s^U_i`.
+**4. Membership and dispositions.** What `covariance()` and `information()`
+each return for a variable, given item 0's classification. The barrier diagonal
+it is classified on sums over both bounds,
+`Σ_i = z^L_i/s^L_i + z^U_i/s^U_i`.
 
 Write $W$ for the primal Hessian block the held factor carries, $H = W - \Sigma$
 for the Lagrangian one, $F$ for the variables the reduction keeps and $A$ for
@@ -170,20 +204,15 @@ The `Σ` column is what skipping the subtraction in $H$ would cost.
 $S$ is conditional on the rest of $A$: with more than one pinned variable,
 $S_{ii}$ holds the others at their bounds rather than marginalizing over them.
 
-The classification is returned with the matrix in every regime, since which
-side of a tolerance a variable falls on is not stable.
+`ambiguous` goes to $F$ with the weakly active row. That is the conservative
+side for `covariance()`, which reports a variance rather than asserting zero,
+and the anti-conservative side for `information()`, which reports full
+information on a variable that may not have it. Item 0's classification is
+what carries the doubt either way.
 
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
 `tol = 1e-6 * (1.0 + abs(xv))`), which pins a weakly active variable and
 deletes its information.
-
-Both halves need core surface that does not exist. The joint test needs the
-bound multipliers at the solution, and $H$ needs the barrier diagonal; neither
-reaches Python, and the held factor is barrier-augmented (`sigma_x` enters the
-augmented system as `d_x` in `kkt/pd_full_space_solver.rs`), so `kkt_solve`
-inverts $W$. The classifier itself exists: `pounce.classify_working_set` takes
-`z_l` and `z_u` and returns the joint classification, thresholded on fixed
-`mult_tol` and `primal_tol` rather than on `μ`.
 
 ## Scope and compatibility
 
@@ -194,17 +223,20 @@ slice and `(Var, time)` block forms) is a new optional keyword, and
 exactly the v0.10 no-argument default, so the v0.9 surface is a
 forward-compatible subset.
 
-Item 4 is the exception: it changes which variables `covariance()` projects
-out, so a model with a weakly active bound gets different numbers than v0.9
-returns. It also depends on the core exposing the bound multipliers and the
-barrier diagonal, so that work gates it.
+Items 0 and 4 are the exception. Item 0 is core work, since the multipliers,
+`μ` and the barrier diagonal all have to reach Python before anything can
+classify. Item 4 then changes which variables `covariance()` projects out, so
+a model with a weakly active bound gets different numbers than v0.9 returns.
 
-Until it lands, `information()` inherits the shipped slack-only
+Until they land, `information()` inherits the shipped slack-only
 classification, so items 1 to 3 are complete for interior solutions and misfile
 a weakly active bound exactly as `covariance()` does now.
 
 ## Validation
 
+- Item 0's ratio across a `μ` sweep on all three regimes: `O(μ)`, `O(1)` and
+  `O(1/μ)`, with the weakly active value fixed as `μ` falls. Against
+  `diagnose_bounds` on the same points, including one it calls `ambiguous`.
 - `information(...)` against `inv(covariance(...))` to tolerance on a
   well-conditioned block with no active bound and pooled residuals; the
   conditioning advantage on a deliberately ill-identified one. The identity
@@ -223,16 +255,19 @@ a weakly active bound exactly as `covariance()` does now.
   the other is free.
 - Refining the solver's `μ` moves the free-block numbers by `O(μ)` and no
   more. Necessary, not sufficient: the weakly-active case is `μ`-invariant and
-  barrier-inflated at once, so it pairs with the slack-and-multiplier
+  barrier-inflated at once, so it pairs with item 0's
   classification. A block conditioned on a strongly active variable outside it
   does move with `μ`, which is correct.
 - A weakly-active fitted variable (slack and multiplier both near zero) stays
   in the free block with its diagonal matching the objective's curvature in
   that variable, not twice it, and is reported as weakly active. Both hold
   across a sweep in `μ`.
-- The `μ`-tied tolerances against `classify_working_set`'s fixed ones, on a
-  weakly active bound solved at several `μ`. The fixed `primal_tol` is the
-  regime where they disagree, since the slack there scales as `sqrt(μ)`.
+- `Σ_i / |H_ii|` on every variable the reduction keeps. It is `O(μ)` on a
+  genuinely inactive one, so a non-negligible ratio there is barrier curvature
+  surviving into the free block, which the `μ` sweep alone does not catch.
+- `s·z` against `μ` on every bounded variable. A mismatch means the point is
+  off the central path or the solver relaxed the bound, and the slack being
+  classified is not the true slack.
 - An indefinite Lagrangian free block returns the settled outcome, refusal or a
   Gauss-Newton fallback, not a matrix that makes a downstream quadratic
   unbounded below.
