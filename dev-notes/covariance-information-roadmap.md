@@ -22,20 +22,18 @@ Gauss-Newton form.
 
 ## Benefit hypothesis
 
-Two things the pyomo-pounce interface lacks, which no pounce interface offers
-together:
-
-- an `information()` accessor consistent with `covariance()` and the core's
-  natural-units reduced Hessian, so a Pyomo model gets the un-inverted
-  object without the invert-then-reinvert round trip; and
-- post-solve `wrt=` block selection off one retained factor, reducing onto
-  arbitrary free-variable blocks from a single solve, the
-  one-solve-two-blocks flow the MHE arrival cost needs, with `retain_kkt()`
-  as the declaration-free enabler.
-
 The reduced Hessian and the covariance recipe are established, and pounce ships
 them in its core, QP, and `curve_fit` interfaces (see Related reduced-Hessian
-work below).
+work below). What no pounce interface offers together, on a Pyomo model, is the
+un-inverted object and a reduce-onto block chosen after the solve rather than
+at declaration time. The next section states each against the shipped code.
+
+Moving horizon estimation wants both at once, and is the worked case: its
+information-form arrival cost is `Γ(x0) = ½ (x0 − x̂)ᵀ Π⁻¹ (x0 − x̂)`,
+where `Π⁻¹` is the reduced Hessian of the one-step subproblem (the previous
+arrival cost plus the stage leaving the window) marginalized onto the arrival
+state. That is Lagrangian information, not covariance, on a block the solve did
+not know about in advance.
 
 ## Where we are
 
@@ -71,15 +69,6 @@ pounce already surfaces the reduced Hessian outside pyomo-pounce. The core
 `QpSensitivity.reduced_hessian` mirrors it on the convex-QP side, and
 `pounce.curve_fit` is the scipy-style covariance frontend for callable models,
 of which `covariance()` is the Pyomo-model sibling.
-
-## The MHE arrival cost
-
-The motivating consumer is moving horizon estimation. Its information-form
-arrival cost is `Γ(x0) = ½ (x0 − x̂)ᵀ Π⁻¹ (x0 − x̂)`, where the
-weighting `Π⁻¹` is the reduced Hessian of the one-step subproblem (the
-previous arrival cost plus the stage leaving the window) marginalized onto the
-arrival state, the Lagrangian information, not the covariance. That
-un-inverted, per-block object is what the roadmap below adds.
 
 ## Roadmap
 
@@ -125,7 +114,7 @@ stable near a transition.
 
 The classifier requires `bound_relax_factor = 0`. The default lets a converged
 primal sit outside its bound by `factor · max(1, |bound|)`, so `s` is not the
-distance to the user's bound and `Σ = z/s` is mis-scaled, badly when the bound
+distance to the user's bound and `Σ = z/s` is scaled wrong, badly when the bound
 is large in magnitude. `s·z` against `μ` is the detector.
 
 This is new code in the Rust core, alongside `classify_working_set`
@@ -144,11 +133,6 @@ against, not a primitive to call. Its `curv_ratio` is the quantity above; its
 status field, set from fixed `s` and `z` thresholds, is the part done
 differently here.
 
-Rust rather than the pyomo frontend because the consumers are plural: item 4
-below, the active-set sensitivity roadmap's item 0 report and item 3 trigger,
-and the jax and torch paths, whose active-set-margin monitor asks a related
-question.
-
 **1. `information()`, the un-inverted sibling of `covariance()`.** Returns the
 information matrix over the block: the reduced Hessian, formed as the Schur
 complement onto the block's rows off the held factor, not by inverting the
@@ -156,7 +140,9 @@ covariance.
 
 Natural units, the core's convention; pyomo `covariance()` carries the `2σ²`
 scaling on top. Same `hessian=` selector, Lagrangian (default) or Gauss-Newton
-(PSD).
+(PSD). The Gauss-Newton path has to form `JᵀJ` over all fitted variables and
+slice to the free block afterwards: it slices first today, so the pinned rows
+are gone before the matrix exists and item 4's `S` has nothing to build from.
 
 Pinned variables are projected out: the information matrix is restricted to the
 free block, the square block over the variables that remain, which is
@@ -267,8 +253,12 @@ a weakly active bound exactly as `covariance()` does now.
 
 ## Validation
 
-- Item 0's ratio across a `μ` sweep on all three regimes: `O(μ)`, `O(1)` and
-  `O(1/μ)`, with the weakly active value fixed as `μ` falls. Against
+- A `μ` sweep over all three regimes, checking together: item 0's ratio goes
+  as `O(μ)`, `O(1)` and `O(1/μ)`; the weakly active value holds at `1` and its
+  free-block diagonal matches the objective's curvature rather than twice it;
+  every other free-block number moves by `O(μ)` and no more; and `Σ_i/|H_ii|`
+  stays `O(μ)` on the variables the reduction keeps, since a non-negligible
+  ratio there is barrier curvature surviving the projection. Against
   `diagnose_bounds` on the same points, including one it calls `ambiguous`.
 - The classification itself across the `μ` sweep, not just the numbers: record
   every label change. An `ambiguous` variable must settle into a regime as `μ`
@@ -305,18 +295,10 @@ a weakly active bound exactly as `covariance()` does now.
 - Two strongly active fitted variables: the off-diagonal $S_{ij}$ matches the
   same construction, and $S_{ii}$ differs from the same variable's value when
   the other is free.
-- Refining the solver's `μ` moves the free-block numbers by `O(μ)` and no
-  more. Necessary, not sufficient: the weakly-active case is `μ`-invariant and
-  barrier-inflated at once, so it pairs with item 0's
-  classification. A block conditioned on a strongly active variable outside it
-  does move with `μ`, which is correct.
-- A weakly-active fitted variable (slack and multiplier both near zero) stays
-  in the free block with its diagonal matching the objective's curvature in
-  that variable, not twice it, and is reported as weakly active. Both hold
-  across a sweep in `μ`.
-- `Σ_i / |H_ii|` on every variable the reduction keeps. It is `O(μ)` on a
-  genuinely inactive one, so a non-negligible ratio there is barrier curvature
-  surviving into the free block, which the `μ` sweep alone does not catch.
+- The `μ` sweep is necessary, not sufficient, on its own: the weakly-active
+  case is `μ`-invariant and barrier-inflated at once, so it only certifies
+  anything alongside item 0's classification. A block conditioned on a strongly
+  active variable outside it does move with `μ`, which is correct.
 - `s·z` against `μ` on every bounded variable. A mismatch means the point is
   off the central path or the solver relaxed the bound, and the slack being
   classified is not the true slack.
