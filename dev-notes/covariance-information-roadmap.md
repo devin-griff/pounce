@@ -185,12 +185,8 @@ Lagrangian Hessian rather than the barrier one; the `Σ` column is what skipping
 that subtraction would cost, `O(μ)` and harmless when inactive, a factor when
 weakly active, unbounded when pinned.
 
-$S$ is a block, not a diagonal. Its off-diagonals are the coupling between two
-pinned variables and are generally nonzero, so reporting $S_{ii}$ alone loses
-them. Its diagonal is conditional on the rest of $A$: with two pinned
-variables, $S_{ii}$ answers how the objective curves as $i$ leaves its bound
-with the other held at its own, which is a different number from the reduction
-that marginalizes over that variable instead.
+$S$ is conditional on the rest of $A$: with more than one pinned variable,
+$S_{ii}$ holds the others at their bounds rather than marginalizing over them.
 
 The classification is returned with the matrix in every regime, since which
 side of a tolerance a variable falls on is not stable.
@@ -251,10 +247,9 @@ complete for interior solutions and misfiles a weakly active bound exactly as
   of the objective minimized over the free variables with that variable held at
   a value and its own bound dropped, and the first derivative of that same
   function is the bound multiplier.
-- Two strongly active fitted variables: the off-diagonal $S_{ij}$ is reported
-  and matches the same construction, so the coupling between two pinned
-  variables is not dropped. Its diagonal is conditional, so $S_{ii}$ here
-  differs from the same variable's value when the other is free.
+- Two strongly active fitted variables: the off-diagonal $S_{ij}$ matches the
+  same construction, and $S_{ii}$ differs from the same variable's value when
+  the other is free.
 - Refining the solver's `μ` moves the free-block numbers by `O(μ)` and no
   more. Necessary, not sufficient: the weakly-active case is `μ`-invariant and
   barrier-inflated at once, so it pairs with the slack-and-multiplier
