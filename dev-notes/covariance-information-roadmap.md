@@ -128,37 +128,28 @@ Why it is shaped that way:
   lands in the same regime by construction (jkitchin/pounce#362).
 
 **1. `information()`, the un-inverted sibling of `covariance()`.** Returns the
-information matrix over the block: the reduced Hessian, formed as the Schur
-complement onto the block's rows off the held factor, not by inverting the
-covariance.
-
+reduced Hessian over the block, formed as the Schur complement onto the
+block's rows off the held factor rather than by inverting the covariance.
 Natural units, the core's convention; pyomo `covariance()` carries the `2σ²`
-scaling on top. Same `hessian=` selector, Lagrangian (default) or Gauss-Newton
-(PSD). The Gauss-Newton path has to form `JᵀJ` over all fitted variables and
-slice to the free block afterwards: it slices first today, so the pinned rows
-are gone before the matrix exists and item 4's `S` has nothing to build from.
+on top. Same `hessian=` selector, Lagrangian (default) or Gauss-Newton.
 
-An indefinite Lagrangian free block is returned as computed, with a warning
-naming Gauss-Newton as the PSD alternative. It is the honest curvature and
-itself a finding, that the point is not a minimum or the model is
-over-parameterized, so refusing withholds a diagnostic. Substituting
-Gauss-Newton silently would return something other than the `hessian=` the
-caller asked for, and a consumer that needs PSD, such as an arrival cost, can
-ask for it.
+Three things it has to do that `covariance()` does not:
 
-Pinned variables are projected out: the information matrix is restricted to the
-free block, the square block over the variables that remain, which is
-`covariance()`'s existing construction. The embedding differs.
-`covariance()` embeds a pinned parameter as a zero row, reading as zero
-variance; the same zeros in an information matrix read as zero information.
-So `information()` returns the free block plus the reduction onto the pinned
-set, the finite weight on each pinned variable as it leaves its bound,
-computable only from the held factor. Item 4 decides membership and gives the
-expression.
+- **Slice the Gauss-Newton product last.** `JᵀJ` is formed over all fitted
+  variables and restricted to $F$ afterwards. It slices first today, so the
+  pinned rows are gone before the matrix exists and item 4's $S$ has nothing
+  to build from.
+- **Return the pinned set as $S$, not as zeros.** `covariance()` embeds a
+  pinned variable as a zero row, which reads as zero variance; the same zeros
+  in an information matrix read as zero information. Item 4 gives membership
+  and the expression.
+- **Return an indefinite Lagrangian block as computed**, warning and naming
+  Gauss-Newton as the PSD alternative. Refusing would withhold a finding: the
+  point is not a minimum, or the model is over-parameterized.
 
-It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`).
-`δ_w I` is isotropic, so unlike `Σ` it lands on the free block and survives the
-projection.
+It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`),
+which bites here because `δ_w I` is isotropic and so, unlike `Σ`, lands on the
+free block and survives the projection.
 
 **2. `wrt=` block selection.** `covariance(model, wrt=block)` and
 `information(model, wrt=block)` reduce onto the given block, any free
