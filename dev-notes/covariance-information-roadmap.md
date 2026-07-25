@@ -141,17 +141,20 @@ $S = H_{AA} - H_{AF} H_{FF}^{-1} H_{FA}$ for the reduction onto the pinned
 set. Each accessor returns a matrix over the whole block; the columns are the
 row a fitted variable $i$ gets in each:
 
-| status | `Σ` as `μ → 0` | $i$ in | `covariance()` row | `information()` row |
-|---|---|---|---|---|
-| inactive | `O(μ)` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
-| strongly active | `O(1/μ)` | $A$ | $0$ | $S_{iA}$ |
-| weakly active | `O(1)` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
-| ambiguous | not separated | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
-| unidentified | not applicable | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
+| status | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` row | `information()` row |
+|---|---|---|---|---|---|---|
+| inactive | `O(1)` | `→ 0` | `μ/s² → 0` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
+| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | $A$ | $0$ | $S_{iA}$ |
+| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
+| ambiguous | n/a | n/a | ratio in a band gap | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
+| unidentified | n/a | n/a | curvature below scale | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
 
-The `Σ` column is what skipping the subtraction in $H$ would cost. It is the
-magnitude of the barrier diagonal, not a test: item 0 classifies on `Σ/q`, and
-on neither `s` nor `z` alone.
+The `s` and `z` columns say what each regime looks like, not how it is
+detected: weak activity is the case where both vanish together, and item 0
+classifies on `Σ/q` rather than on either alone. The `Σ` column shows how the
+barrier diagonal gets where it does, through the slack when the bound is
+inactive and through the multiplier when it is active, and is what skipping
+the subtraction in $H$ would cost.
 
 $S$ carries two caveats the table cannot. It is conditional on the rest of
 $A$: with more than one pinned variable, $S_{ii}$ holds the others at their
