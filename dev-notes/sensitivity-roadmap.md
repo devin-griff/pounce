@@ -148,7 +148,9 @@ leans on.
    (at its bound with a near-zero multiplier), so strict complementarity
    fails where we linearize. The linear step gives a two-sided derivative
    that is wrong on at least one side; the correct object is a directional
-   derivative from a small QP.
+   derivative from a small QP. The step also sits strictly between the two
+   one-sided values at every `mu`, so tightening the solver tolerance does
+   not move it toward either.
 
 ## Roadmap
 
@@ -158,9 +160,11 @@ the parity step.
 
 **0. Diagnostics foundation → past sIPOPT.** Breakpoint detection (the
 ratio test to the first crossing) and a report the estimate returns:
-which variables crossed, the residual, the `mu` used. Cheap, needed by
-everything below, and useful on its own — it turns the current silent
-clamp into "here is what happened" (sIPOPT exposes no such report).
+which variables crossed, the residual, the `mu` used, and the activity
+classification, so a caller can tell a derivative from one element of a
+set. Cheap, needed by everything below, and useful on its own — it turns
+the current silent clamp into "here is what happened" (sIPOPT exposes no
+such report).
 
 **1. Fix-relax + `mu`-correction → sIPOPT parity.** Two changes together
 constitute full parity. **(a) Fix-relax** (the substantial one): upgrade
@@ -174,10 +178,12 @@ Validate against upstream `SensStdStepCalc.cpp`. Since pounce#7 no longer
 covers it, it should get its own issue. **(b) `mu`-correction** (minor):
 apply the eq. 10 term that
 corrects the predictor for the factorization sitting at `mu` > 0 rather
-than `mu` = 0. Automatic, inside the predictor, negligible at tight
-tolerance — the small remaining formal gap. Fix-relax carries the active
-set, the `mu`-correction finishes the predictor, and the two are full
-sIPOPT parity.
+than `mu` = 0. Automatic, inside the predictor, and negligible at tight
+tolerance under strict complementarity. It is not the fix for failure mode
+2: eq. 10 is derived under the paper's Property 1, whose third condition is
+strict complementarity, so where that fails the correction does not apply
+and item 3 is what handles it. Fix-relax carries the active set, the
+`mu`-correction finishes the predictor, and the two are full sIPOPT parity.
 
 **2. Multi-crossing path-following → past sIPOPT (crossing axis).** Iterate
 the fix-relax across successive breakpoints toward the target
