@@ -123,13 +123,6 @@ the objective barely curves in must not come back with zero variance. The sign
 of `H_ii` is reported alongside, since the absolute value would otherwise hide
 the indefinite case item 1 returns.
 
-`ambiguous` means the regime is undetermined at this `μ`, and the fix is to
-re-solve at a tighter tolerance: the drift that puts an inactive or strongly
-active variable inside the band is `O(1)`, while the edges move as
-`sqrt(μ)`, so tightening separates them. The classification is returned to
-the caller in every case, since which region a variable falls in is not
-stable near a transition.
-
 Inequality constraint rows classify the same way. A row carries a slack and a
 multiplier with `s_j z_j = μ` exactly as a bound does, so `Σ_j = z_j/s_j` and
 the three scalings are unchanged. Only the denominator differs: a variable's
@@ -241,10 +234,14 @@ and gets worse as the solve tightens, the opposite direction from the re-solve
 `ambiguous` asks for. The free rows are unaffected, and so is a weakly active
 variable, whose `Σ` is the same order as the curvature it comes off.
 
-The last two rows warn as well as return: `ambiguous` that the regime is
-undetermined at this `μ` and that re-solving tighter will settle it,
-`unidentified` that the objective barely curves in that direction, so the
-bound question does not arise and the variance is large rather than small.
+The classification comes back with the matrix in every case, since which
+region a variable falls in is not stable near a transition, and the last two
+rows warn as well as return. `ambiguous` says the regime is undetermined at
+this `μ` and that re-solving tighter will settle it, which works because the
+drift that pushes an inactive or strongly active variable into the band is
+`O(1)` while the edges move as `sqrt(μ)`. `unidentified` says the objective
+barely curves in that direction, so the bound question does not arise and the
+variance is large rather than small.
 $F$ is the conservative side for `covariance()`, which reports a variance
 rather than asserting zero, and the anti-conservative side for
 `information()`, which reports full information on a variable that may not
