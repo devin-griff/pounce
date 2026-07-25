@@ -60,6 +60,24 @@ Two limits matter for what comes next:
    reports over the whole `declare_fitted` set. Asking about a different
    block means re-declaring and re-solving.
 
+## Preconditions
+
+Four conditions underwrite the whole surface, and the roadmap handles two of
+them explicitly.
+
+Strict complementarity failing is the weakly active case, which item 0 detects
+and reports rather than assuming away. An active set that changes under
+perturbation is item 2's conditional-versus-marginal distinction, which is
+stated with the matrix.
+
+The other two are assumed. LICQ is what makes the active-set KKT nonsingular,
+and it is the precondition for the roadmap's own validation, since matching a
+free block against the same model solved with a variable fixed is a
+bounds-to-equalities substitution. Second-order sufficiency is what makes the
+reduced Hessian positive definite on the free space; when it fails the result
+is the indefinite free block item 1 returns with a warning, which is a
+diagnostic rather than an error but is not a covariance.
+
 ## Related reduced-Hessian work in other pounce interfaces
 
 pounce already surfaces the reduced Hessian outside pyomo-pounce. The core
@@ -105,6 +123,20 @@ move with `μ`. Scaling the band with `μ` would widen it as the solve tightens,
 swallowing more of the other two regimes exactly where the classification
 should be sharpest.
 
+The denominator has to be checked first. `|H_ii|` is a curvature scale only
+while the objective actually curves in that direction; on a poorly identified
+one it is noise, and the ratio inherits that. An inactive bound a full unit
+away from its variable classifies as `ambiguous` once `H_ii` reaches `1e-6`
+and as `strongly active` by `1e-13`, which projects the variable out and
+reports zero variance for a parameter the data barely constrains. Tightening
+`μ` relocates the misfile rather than removing it. So `|H_ii|` is compared to
+the free block's own curvature scale before anything else, and below it the
+variable returns `unidentified` with no bound regime, since the bound is not
+what is wrong. Its disposition is $F$: whatever else is uncertain, a direction
+the objective barely curves in must not come back with zero variance. The sign
+of `H_ii` is reported alongside, since the absolute value would otherwise hide
+the indefinite case item 1 returns.
+
 `ambiguous` means the regime is undetermined at this `μ`, and the fix is to
 re-solve at a tighter tolerance: the drift that puts an inactive or strongly
 active variable inside the band is `O(1)`, while the edges move as
@@ -112,10 +144,18 @@ active variable inside the band is `O(1)`, while the edges move as
 the caller in every case, since which region a variable falls in is not
 stable near a transition.
 
-The classifier requires `bound_relax_factor = 0`. The default lets a converged
-primal sit outside its bound by `factor · max(1, |bound|)`, so `s` is not the
-distance to the user's bound and `Σ = z/s` is scaled wrong, badly when the bound
-is large in magnitude. `s·z` against `μ` is the detector.
+The classifier requires `bound_relax_factor = 0`, and checks it rather than
+documenting it. The default lets a converged primal sit outside its bound by
+`factor · max(1, |bound|)`, so `s` is not the distance to the user's bound and
+`Σ = z/s` is scaled wrong, badly when the bound is large in magnitude. A user
+hits that by doing nothing, so a stated precondition the shipped default
+violates is not enough.
+
+Two conditions are checked at every call and warned on, not only in the tests.
+`s·z` away from `μ` means the point is off the central path or the bound was
+relaxed, so the slack being classified is not the user's slack. `Σ_i/|H_ii|`
+non-negligible on a variable the reduction kept means barrier curvature
+survived the projection into a block that is supposed to be free of it.
 
 This is new code in the Rust core, alongside `classify_working_set`
 (`crates/pounce-sensitivity/src/convenience.rs`, exposed through
@@ -230,12 +270,15 @@ The `Σ` column is what skipping the subtraction in $H$ would cost.
 $S$ is conditional on the rest of $A$: with more than one pinned variable,
 $S_{ii}$ holds the others at their bounds rather than marginalizing over them.
 
-`ambiguous` goes to $F$ with the weakly active row, and warns that the regime
-is undetermined at this `μ` and that re-solving tighter will settle it. That
-is the conservative side for `covariance()`, which reports a variance rather
-than asserting zero, and the anti-conservative side for `information()`,
-which reports full information on a variable that may not have it, so the
-warning is doing real work rather than annotating a number that is fine.
+`ambiguous` and `unidentified` both go to $F$ with the weakly active row, and
+both warn: `ambiguous` that the regime is undetermined at this `μ` and that
+re-solving tighter will settle it, `unidentified` that the objective barely
+curves in that direction so the bound question does not arise and the variance
+is large rather than small. $F$ is the conservative side for `covariance()`,
+which reports a variance rather than asserting zero, and the
+anti-conservative side for `information()`, which reports full information on
+a variable that may not have it, so the warning is doing real work rather than
+annotating a number that is fine.
 
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
 `tol = 1e-6 * (1.0 + abs(xv))`), which pins a weakly active variable and
