@@ -83,54 +83,49 @@ block the held factor carries and $H = W - \Sigma$ is the Lagrangian one, so
 the set of variables the reduction keeps, $A$ the ones it projects out.
 
 **0. The activity classifier → Rust core.** Which regime each bounded variable
-is in, decided by the ratio of the barrier curvature on it to the objective's
-own curvature there, `Σ_i / |H_ii|`. That ratio is `O(μ)` when the bound is
-inactive, `O(1)` when weakly active, and `O(1/μ)` when strongly active, so the
-three separate by orders of magnitude at any `μ` and the weakly active case
-sits at a fixed place rather than moving with the solve.
+and each inequality row is in, returned with the matrix by both accessors.
 
-Thresholding `s` and `z` separately does not work at any constant, since both
-are `O(sqrt(μ))` at weak activity: a fixed threshold tracks the solve rather
-than the geometry, and `sqrt(μ)` puts the case the test exists to find exactly
-on itself.
+```
+classify(i):                          # a bounded variable, or an inequality row
+    Σ = z/s, summed over whichever sides exist
+    q = |H_ii|                                  variable: curvature in that coordinate
+        ∇gᵢᵀ H ∇gᵢ / ‖∇gᵢ‖²                     row: curvature along the normal
 
-Cutoffs, for `μ ≤ 1e-4`: `inactive` below `sqrt(μ)`, `weakly active` in
-`[1e-1, 1e1]`, `strongly active` above `1/sqrt(μ)`, `ambiguous` in the two
-gaps. The outer edges are the geometric midpoints between the regimes'
-scalings, so the weakly active case sits at the centre with
-`0.5·|log μ|` decades of margin either side. Above `μ = 1e-4` the outer
-edges close inside the inner band and everything not clearly outside is
-`ambiguous`, which is the honest answer at that tolerance.
+    if q < curvature_scale(H_FF):     return unidentified, sign(H_ii)
+    r = Σ / q
 
-The inner band is fixed while the outer edges move because they absorb
-different things. The ratio is `1` at weak activity whatever `μ` and whatever
-the scaling, so the band only has to tolerate the coupling drift
-$\Sigma_i = H_{ii} + \sum_{j \ne i} H_{ij} x_j / x_i$, which is `O(1)` in `μ`.
-Scaling it with `μ` would widen it as the solve tightens, exactly where the
-classification should be sharpest.
+    if μ > 1e-4:                      # the μ-edges have closed inside the band
+        return inactive         if r < 1e-1
+        return strongly active  if r > 1e1
+        return ambiguous
 
-The denominator has to be checked first. `|H_ii|` is a curvature scale only
-while the objective actually curves in that direction; on a poorly identified
-one it is noise, and the ratio inherits that. An inactive bound a full unit
-away from its variable classifies as `ambiguous` once `H_ii` reaches `1e-6`
-and as `strongly active` by `1e-13`, which projects the variable out and
-reports zero variance for a parameter the data barely constrains. Tightening
-`μ` relocates the misfile rather than removing it. So `|H_ii|` is compared to
-the free block's own curvature scale before anything else, and below it the
-variable returns `unidentified` with no bound regime, since the bound is not
-what is wrong. Its disposition is $F$: whatever else is uncertain, a direction
-the objective barely curves in must not come back with zero variance. The sign
-of `H_ii` is reported alongside, since the absolute value would otherwise hide
-the indefinite case item 1 returns.
+    return inactive         if r < √μ
+    return strongly active  if r > 1/√μ
+    return weakly active    if 1e-1 ≤ r ≤ 1e1
+    return ambiguous                  # in a gap between the band and an edge
+```
 
-Inequality constraint rows classify the same way. A row carries a slack and a
-multiplier with `s_j z_j = μ` exactly as a bound does, so `Σ_j = z_j/s_j` and
-the three scalings are unchanged. Only the denominator differs: a variable's
-is `H_ii`, the objective's curvature in that coordinate, and a row's is the
-curvature along its normal, $\nabla g_j^\top H \nabla g_j / \|\nabla g_j\|^2$.
-That reduces to `H_ii` when the row is a bound in disguise, so a limit written
-as a bound and the same limit written as a constraint land in the same regime
-by construction rather than by coincidence (jkitchin/pounce#362).
+Why it is shaped that way:
+
+- **The ratio, not `s` and `z` separately.** Both are `O(√μ)` at weak
+  activity, so any constant threshold on them tracks the solve rather than the
+  geometry. `r` is `O(μ)`, `O(1)` and `O(1/μ)` across the three regimes.
+- **Edges at `√μ` and `1/√μ`.** The geometric midpoints between those
+  scalings, so the weakly active case sits at the centre with `0.5·|log μ|`
+  decades of margin either side.
+- **A fixed inner band.** It absorbs the coupling drift
+  $\Sigma_i = H_{ii} + \sum_{j \ne i} H_{ij} x_j / x_i$, which is `O(1)` in
+  `μ`. Scaling it with `μ` would widen it as the solve tightens, exactly where
+  the classification should be sharpest.
+- **The denominator guard first.** `|H_ii|` is a curvature scale only where
+  the objective curves. An inactive bound a full unit from its variable
+  classifies as `ambiguous` once `H_ii` reaches `1e-6` and as `strongly
+  active` by `1e-13`, and tightening `μ` relocates the misfile rather than
+  removing it.
+- **Rows use the same `r`.** A row carries a slack and a multiplier with
+  `s_j z_j = μ` exactly as a bound does, and its denominator reduces to
+  `H_ii` when the row is a bound in disguise, so a limit written either way
+  lands in the same regime by construction (jkitchin/pounce#362).
 
 **1. `information()`, the un-inverted sibling of `covariance()`.** Returns the
 information matrix over the block: the reduced Hessian, formed as the Schur
