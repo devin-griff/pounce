@@ -3,7 +3,8 @@
 **Status: roadmap proposal for pyomo-pounce, targeting v0.10.** This note
 scopes extending pyomo-pounce's `estimate()` to handle active-set changes,
 reaching parity with sIPOPT and then past it, on a clean mechanism/policy
-boundary. That is the pyomo / held-factorization sensitivity path
+boundary, plus the one model-setup fix that has to land with it. That is
+the pyomo / held-factorization sensitivity path
 specifically; the jax/torch and convex-QP frontends have their own
 sensitivity surfaces (see Related work). Nothing here is implemented yet;
 the intent is to agree the shape before any PR.
@@ -156,7 +157,8 @@ backsolve the jax follower already leans on.
 
 Staged by dependency: the diagnostics foundation (item 0), parity (item 1),
 then items 2–4. Everything except item 1 reaches past sIPOPT; item 1 is
-the parity step.
+the parity step. Item 5 sits outside that ladder: a correctness fix in the
+model-setup path, independent of the rest.
 
 **0. Diagnostics foundation → past sIPOPT.** Breakpoint detection (the
 ratio test to the first crossing) and a report the estimate returns:
@@ -199,14 +201,6 @@ strict complementarity, so where that fails the correction does not apply
 and item 3 is what handles it. Fix-relax carries the active set, the
 `mu`-correction finishes the predictor, and the two are full sIPOPT parity.
 
-Both assume the bounds hold still. A model may write a bound in terms of a
-declared Param, in which case perturbing it moves the bound, and fix-relax
-pins the variable to a value that has itself moved: the pin row needs
-`dl/dp` or `du/dp` rather than a constant, and the breakpoint test in item 0
-is a race between the variable and its own bound. Either support it or detect
-a parameter-dependent bound at declaration time and refuse, but not silently
-treat it as fixed.
-
 **2. Multi-crossing path-following → past sIPOPT (crossing axis).** Iterate
 the fix-relax across successive breakpoints toward the target
 perturbation. The 2012 paper takes the same stepwise shape for its QP
@@ -238,6 +232,37 @@ wrapper that loops to a residual tolerance with an iteration cap and a
 stagnation guard. The residual tolerance is a numerical stopping criterion
 the solver owns; a budget or deadline stop stays with the caller and uses
 the raw step. Cost is ~1 backsolve per iteration.
+
+**5. Parameter-dependent bounds → `sens_solve`.** A model may write a Var's
+bound in terms of a declared Param. Pyomo keeps that live: `_ub` holds the
+Param itself and `identify_mutable_parameters` finds it. But the NL write
+bakes the bound to a number, and `SensitivityInterface` implements only
+`_replace_parameters_in_constraints`, never touching bounds. So the bound
+freezes at its pre-perturbation value and `estimate()` predicts against the
+wrong feasible region with nothing said.
+
+The fix is reformulation, and the toolbox does the rest. Scan each Var's
+`_lb` and `_ub` for declared Params, clear that bound, and add it back as an
+ordinary Constraint. `setup_sensitivity` then substitutes the Param for its
+block Var wherever it appears in a constraint expression, including alone in
+a bound slot, which Pyomo normalizes into the body: both `x <= p` and
+`x - p <= 0` come out as `x - p_block <= 0`. The pin row `p_block - p == 0`
+moves it, and the sensitivity arrives through the constraint multiplier.
+That is the paper's eq. 11 formulation, exact in the bound rather than
+first-order, with no `dl/dp` anywhere in the fix-relax row.
+
+It has to run on the clone before `setup_sensitivity`, so it goes in
+`sens_solve`, not in the declaration. The constructor currently clones and
+setup fires immediately after (`SensitivityInterface(model,
+clone_model=True)`), so the reformulation needs an explicit clone and
+`clone_model=False`.
+
+One consequence to settle: the activity moves from a variable bound to a
+constraint row, and the shared classifier is bounds-only. Either it extends
+to rows, which `classify_working_set` already does, or a reformulated bound
+loses the classification that items 0 and 3 run on.
+
+Independent of items 0 to 4.
 
 ## API surface
 
@@ -287,9 +312,9 @@ drives the raw single step, because only the caller knows the deadline.
 - **fix-relax** against sIPOPT's own worked example (the paper's §2.8
   parametric QP with a documented active-set change) and against a full
   re-solve.
-- **a parameter-dependent bound**: against a re-solve, and the refusal path
-  if that is the decision. A constant pin row passes every fixed-bound test
-  and is wrong here, so nothing else in this list catches it.
+- **a parameter-dependent bound** (item 5): the reformulated model matches a
+  re-solve at the perturbed value, and the un-reformulated one does not. A
+  frozen bound passes every fixed-bound test, so nothing else here catches it.
 - **path-following** against re-solve across several crossings.
 - **QP directional** against finite differences and a constructed
   weakly-active case.
