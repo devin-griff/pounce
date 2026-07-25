@@ -41,17 +41,12 @@ open solver does not.
 
 ## Benefit hypothesis
 
-The contribution is not new sensitivity mathematics: every method here is
-established (see State of the art above). Its value is assembling the
-known menu into one coherent, open, cleanly-layered implementation — an
-explicit ordered-mode plus diagnostics API, automatic degeneracy handling,
-and the mechanism/policy split that keeps the primitives in pounce and the
-control policy in the caller — which no open package offers today, and
-which the one commercial package that might (WORHP Zen) keeps closed. The
-payoff is that pounce becomes the open reference for full active-set-aware
-parametric sensitivity, so advanced-step NMPC, RTO, and estimation can be
-built on an auditable open stack instead of half-measures (a clamp) or a
-closed one.
+Every method here is established. The value is assembling the known menu
+into one open implementation: an explicit ordered-mode plus diagnostics API,
+automatic degeneracy handling, and the mechanism/policy split. No open
+package offers that today, and the one commercial package that might (WORHP
+Zen) keeps it closed. The payoff is that advanced-step NMPC, RTO, and
+estimation get an auditable open stack instead of a clamp.
 
 ## Where we are
 
@@ -85,24 +80,38 @@ on real problems. Two properties matter for this roadmap:
    correction.** It is evaluated against the factorization at the final
    `mu` but carries no explicit `mu`-correction term.
 
-### The precise gap versus sIPOPT
+## The reference: what sIPOPT implements, and the gap
 
-sIPOPT's bound handling is also an option, `sens_boundcheck`, and it
-defaults **off** (pounce mirrors this: `sens_app.rs` registers
-`sens_boundcheck` default `false`, "Mirrors upstream ...
-SensApplication.cpp:63"). The difference is what that option *does* when
-on. sIPOPT runs the **iterative Schur-refinement fix-relax**: each
-violation adds a row to the augmented system pinning that variable, then
-re-solves, so the non-violating coordinates **shift** to stay consistent
-with the implicit-function-theorem relations under the pin. pounce pins
-the offender and **freezes** the rest.
+From Pirnay, López-Negrete & Biegler, *Optimal sensitivity based on
+IPOPT*, Math. Program. Comput. 4 (2012) 307–331
+([DOI](https://doi.org/10.1007/s12532-012-0043-2)), §2.3–2.4:
 
-So the gap is not "no bound handling" and not "no scaffolding". It is the
-re-solve: pounce clamps one coordinate, sIPOPT lets the whole solution
-bend to absorb the pin. That is exactly what matters on a deep violation,
-where the estimate flattens against a bound. The `boundcheck.rs` pointer
-to pounce#7 for "the full refinement" is stale (that umbrella issue is
-closed); no open issue currently tracks this.
+- **Base linear predictor** — the same Schur-complement step pounce does.
+- **Fix-relax.** When a perturbed variable would violate its bound, sIPOPT
+  augments the KKT system with a row pinning that variable to the bound and
+  relaxes the matching complementarity condition with a new multiplier,
+  solved through the Schur complement on the already-held factorization. A
+  low-rank update rather than a refactor.
+- **Evaluated at the final `mu` with an explicit `mu`-correction** (the
+  paper's eq. 10).
+
+Explicitly **not** implemented in sIPOPT, per the paper: the QP/LCP
+directional method (eq. 14, "the current version of sIPOPT does not
+include an implementation of (14)"), multi-step path-following, and any
+predictor-corrector loop.
+
+Fix-relax is an option there too, `sens_boundcheck`, defaulting **off**
+(pounce mirrors this: `sens_app.rs` registers it `false`, "Mirrors upstream
+... SensApplication.cpp:63"). The gap is what the option does when on.
+sIPOPT re-solves: each violation adds a row to the augmented system pinning
+that variable, so the non-violating coordinates **shift** to stay consistent
+with the implicit-function-theorem relations under the pin. pounce pins the
+offender and **freezes** the rest, which is what matters on a deep
+violation, where the estimate flattens against a bound. pounce also omits
+the eq. 10 `mu`-correction. Item 1 closes both.
+
+The `boundcheck.rs` pointer to pounce#7 for "the full refinement" is stale
+(that umbrella issue is closed); no open issue currently tracks this.
 
 ## Related sensitivity work in other pounce frontends
 
@@ -129,34 +138,6 @@ below. But item 0's diagnostics and item 3's weak-activity scan should
 reuse `QpSensitivity`'s vocabulary and detection primitive, and the pyomo
 path should share the same core Schur backsolve the jax follower already
 leans on.
-
-## The reference: what sIPOPT actually implements
-
-From Pirnay, López-Negrete & Biegler, *Optimal sensitivity based on
-IPOPT*, Math. Program. Comput. 4 (2012) 307–331
-([DOI](https://doi.org/10.1007/s12532-012-0043-2)), read against the
-paper's §2.3–2.4:
-
-- **Base linear predictor** — the same Schur-complement step pounce does.
-- **Single-crossing fix-relax.** When a perturbed variable would violate
-  its bound, sIPOPT augments the KKT system with a row pinning that
-  variable to the bound and relaxes the matching complementarity condition
-  with a new multiplier, solved through the Schur complement on the
-  already-held factorization. This is a genuine active-set correction, not
-  a clamp, done as a low-rank update rather than a refactor.
-- **Evaluated at the final `mu` with an explicit `mu`-correction** (the
-  paper's eq. 10).
-
-Explicitly **not** implemented in sIPOPT, per the paper: the QP/LCP
-directional method (eq. 14, "the current version of sIPOPT does not
-include an implementation of (14)"), multi-step path-following, and any
-predictor-corrector loop.
-
-So today pounce is *behind* sIPOPT by one material step, detailed under
-"Where we are" above: sIPOPT's `sens_boundcheck` re-solves so the
-solution bends around the pinned variable, where pounce's clamp freezes
-the rest. (It also omits sIPOPT's minor eq. 10 `mu`-correction; both are
-closed by roadmap item 1.)
 
 ## Two failure modes (they want different treatments)
 
@@ -187,11 +168,11 @@ constitute full parity. **(a) Fix-relax** (the substantial one): upgrade
 augment the held factorization with a row pinning the first crossing
 variable, re-solve so the non-violating coordinates absorb the pin, via
 the `IndexSchurData` path that already does the augmented backsolve
-(`parametric_step` in `solver.rs`). The `sens_boundcheck` option and the module
-already exist, so this is a scoped change to one module, not greenfield;
-low-rank Schur update, no refactor; validate against upstream
-`SensStdStepCalc.cpp`. Since pounce#7 no longer covers it, it should get
-its own issue. **(b) `mu`-correction** (minor): apply the eq. 10 term that
+(`parametric_step` in `solver.rs`). The `sens_boundcheck` option and the
+module already exist, so this is one module and a low-rank Schur update.
+Validate against upstream `SensStdStepCalc.cpp`. Since pounce#7 no longer
+covers it, it should get its own issue. **(b) `mu`-correction** (minor):
+apply the eq. 10 term that
 corrects the predictor for the factorization sitting at `mu` > 0 rather
 than `mu` = 0. Automatic, inside the predictor, negligible at tight
 tolerance — the small remaining formal gap. Fix-relax carries the active
@@ -200,8 +181,10 @@ sIPOPT parity.
 
 **2. Multi-crossing path-following → past sIPOPT (crossing axis).** Iterate
 the fix-relax across successive breakpoints toward the target
-perturbation. This is the stepwise continuation the 2012 paper derived
-(§2.3) but left unimplemented. Needs breakpoint ordering, constraint add
+perturbation. The 2012 paper takes the same stepwise shape for its QP
+(§2.3, solve at the first active-set change, then again from there to the
+target) and credits stepwise application of the base sensitivity step to
+earlier work; neither is in sIPOPT. Needs breakpoint ordering, constraint add
 *and* drop, and anti-cycling. Cost scales with active-set churn, up to a
 re-solve.
 
@@ -215,11 +198,9 @@ weak-activity screen the convex-QP frontend already ships
 (`QpSensitivity`, `sensitivity.rs`); the correction is what pyomo-pounce
 adds. Independent of items 1 and 2, auto-triggered when the solve detects
 weak activity, not a user knob. Cost is conditional: the detection is a
-negligible threshold scan over the converged multipliers, always paid; the
-QP fires only on a degenerate base point, and when it does it is small, over
-the weakly-active set (dimension = the number of weakly-active constraints,
-usually a handful), at roughly a backsolve per weakly-active constraint
-against the held factorization, no refactor and well short of a re-solve.
+threshold scan over the converged multipliers, always paid; the QP fires
+only on a degenerate base point, over the weakly-active set, at roughly a
+backsolve per weakly-active constraint.
 
 **4. Corrector-step primitive → past sIPOPT.** One Newton/primal-dual
 iteration reusing the held factorization, returning the residual. Small
@@ -234,16 +215,12 @@ the raw step. Cost is ~1 backsolve per iteration.
 
 ## API surface
 
-The sensitivity API surface is four elements of two types. Three are
-**modes** of `estimate()`, an ordered ladder on a single `mode` argument
-(`linear` the baseline, `fix_relax` item 1, `path` item 2), each a
-correctness-superset of the one below. The fourth is the **corrector
-step** (item 4), a separate primitive the caller drives in a loop. Item 3
-(QP directional) is not part of the surface: it is applied automatically
-inside `estimate()` when the base point is degenerate, so the caller
-neither selects nor calls it. The cost unit is a **backsolve** against the
-held factorization (microseconds; the cheap operation the feature exists
-to exploit); a **re-solve** is the expensive bound.
+Three **modes** of `estimate()`, an ordered ladder on a single `mode`
+argument, each a correctness-superset of the one below, plus the
+**corrector step**, a separate primitive the caller drives in a loop. Item 3
+is not on the surface: it applies automatically inside `estimate()` when the
+base point is degenerate. Costs are in **backsolves** against the held
+factorization; a **re-solve** is the expensive bound.
 
 | element | choose when | cost | type |
 |---------|-------------|------|------|
@@ -267,19 +244,13 @@ factorization (a step, a corrector iteration, a fix-relax solve, a
 breakpoint test) plus the diagnostics to decide. The **policy** — how many
 correctors, when to stop, which mode per cycle, whether to abandon the
 estimate and call a full `solve()` instead, the advanced-step
-solve-ahead-then-update orchestration — belongs to the downstream consumer
-(an advanced-step NMPC controller, an RTO or estimation loop), because
-those decisions depend on a real-time budget the solver has no business
-knowing.
+solve-ahead-then-update orchestration — belongs to the downstream consumer.
 
-Keeping the split means the primitives serve estimation, RTO, and control
-alike, and pounce stays a general solver rather than absorbing a
-controller. Concretely: a loop whose size is fixed by the problem or by
-numerical convergence runs to completion inside pounce — path-following
-across its crossings, or a corrector loop to a residual tolerance. A loop
-whose size is fixed by an external budget — a deadline-bounded corrector
-loop — lives in the caller and drives the raw single step, because only
-the caller knows the deadline.
+The line: a loop whose size is fixed by the problem or by numerical
+convergence runs to completion inside pounce, so path-following across its
+crossings and a corrector loop to a residual tolerance both live here. A
+loop whose size is fixed by an external budget lives in the caller and
+drives the raw single step, because only the caller knows the deadline.
 
 ## Validation
 
