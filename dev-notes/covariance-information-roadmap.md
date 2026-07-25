@@ -166,8 +166,8 @@ what makes the multiplier necessary. It sums over both bounds,
 the slack side contributes `μ/s²`, so the active bound sets the regime.
 
 Write $W$ for the primal Hessian block the held factor carries, $H = W - \Sigma$
-for the Lagrangian one, $F$ for the variables not at a bound and $A$ for the pinned ones.
-What each accessor gives for a fitted variable $i$:
+for the Lagrangian one, $F$ for the variables not at a bound and $A$ for the
+pinned ones. What each accessor gives for a fitted variable $i$:
 
 | bound regime | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` | `information()` |
 |---|---|---|---|---|---|---|
