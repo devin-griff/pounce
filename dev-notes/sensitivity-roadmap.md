@@ -20,24 +20,22 @@ uses are all in the literature: Fiacco's stability theory and the
 directional-derivative QP; the Büskens/Maurer active-set-change
 sensitivity for real-time control; and the sIPOPT paper itself, which
 derives multi-step path-following and the eq. 14 QP but leaves them
-unimplemented. A light survey of where the boxes are checked
-(base predictor, fix-relax, path-following, degeneracy QP, corrector):
+unimplemented. Where the boxes are checked (base predictor, fix-relax,
+path-following, degeneracy QP, corrector), for the two whose coverage is
+established from primary sources:
 
 | solver / module | base | fix-relax | path | degen | corr |
 |---|:--:|:--:|:--:|:--:|:--:|
 | IPOPT + sIPOPT / k_aug (open) | ✓ | ✓ | ✗ | ✗ | ✗ |
-| WORHP Zen (commercial) | ✓ | ~ | ~ | ? | ~ |
-| KNITRO | ~ | ✗ | ✗ | ✗ | ✗ |
-| SNOPT | ✗ | ✗ | ✗ | ✗ | ✗ |
-| acados RTI (SQP paradigm) | ✗ | ~ | ~ | ✗ | ✓ |
 | CasADi sensitivity | ✓ | ✗ | ✗ | ✗ | ✗ |
 
-No single solver checks the full menu in the held-factorization paradigm.
-sIPOPT, the open reference, checks two boxes; WORHP Zen is the strongest
-but is closed and its full coverage is unconfirmed; acados checks the
-corrector box in a different paradigm. The techniques exist scattered
-across the literature and these tools, but the full integrated set in one
-open solver does not.
+sIPOPT is the open reference and checks two: the paper states outright that
+the eq. 14 QP is not implemented, and neither multi-step path-following nor
+a corrector loop appears. Beyond those two the picture is unconfirmed. WORHP
+Zen is closed and appears to be the strongest of the commercial options;
+KNITRO and SNOPT expose little on this axis; acados covers the corrector in
+the SQP paradigm rather than this one. The claim this roadmap rests on is
+about the open reference, and that row is checkable.
 
 ## Benefit hypothesis
 
@@ -165,10 +163,13 @@ classification, so a caller can tell a derivative from one element of a
 set. Useful on its own — it turns the current silent clamp into "here is
 what happened" (sIPOPT exposes no such report).
 
-The classification is the shared bound classifier specified as item 0 of the
-covariance roadmap (`covariance-information-roadmap.md`): the regime of each
-bounded variable, read off the ratio of its barrier curvature to the
-objective's own curvature. That is Rust core work, since the multipliers, `mu`
+The classification is which regime each bounded variable is in, inactive,
+weakly active or strongly active, read off the ratio of its barrier curvature
+to the objective's own curvature there. That ratio is `O(mu)`, `O(1)` and
+`O(1/mu)` across the three, so it separates them at any `mu`. The cutoffs, the
+degenerate cases and the core work are specified as item 0 of the covariance
+roadmap (`covariance-information-roadmap.md`), which is the same classifier
+rather than a second one. That is Rust core work, since the multipliers, `mu`
 and the barrier diagonal all have to be exposed through `crates/pounce-py`
 first, and it gates this item and item 3. The breakpoint half has no such
 dependency.
