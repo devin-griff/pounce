@@ -101,10 +101,10 @@ inactive, `O(1)` when weakly active, and `O(1/μ)` when strongly active, so the
 three separate by orders of magnitude at any `μ` and the weakly active case
 sits at a fixed place rather than moving with the solve.
 
-Thresholding `s` and `z` separately does not work at any constant. Both are
-`O(sqrt(μ))` at weak activity, so a fixed threshold reports the regime only
-when `μ` lands in its band. `sqrt(μ)` as the threshold fails the other way, by
-putting the case the test exists to find exactly on it.
+Thresholding `s` and `z` separately does not work at any constant, since both
+are `O(sqrt(μ))` at weak activity: a fixed threshold tracks the solve rather
+than the geometry, and `sqrt(μ)` puts the case the test exists to find exactly
+on itself.
 
 Cutoffs, for `μ ≤ 1e-4`: `inactive` below `sqrt(μ)`, `weakly active` in
 `[1e-1, 1e1]`, `strongly active` above `1/sqrt(μ)`, `ambiguous` in the two
@@ -114,14 +114,12 @@ scalings, so the weakly active case sits at the centre with
 edges close inside the inner band and everything not clearly outside is
 `ambiguous`, which is the honest answer at that tolerance.
 
-The inner band is fixed and the outer edges are not, because they absorb
-different things. `Σ = H_ii` exactly at weak activity in the decoupled case,
-so the ratio is `1` there whatever `μ` and whatever the problem scaling, and
-what the band has to tolerate is the coupling drift
-`Σ_i = H_ii + \sum_{j \ne i} H_{ij} x_j / x_i`, which is `O(1)` and does not
-move with `μ`. Scaling the band with `μ` would widen it as the solve tightens,
-swallowing more of the other two regimes exactly where the classification
-should be sharpest.
+The inner band is fixed while the outer edges move because they absorb
+different things. The ratio is `1` at weak activity whatever `μ` and whatever
+the scaling, so the band only has to tolerate the coupling drift
+`Σ_i = H_ii + \sum_{j \ne i} H_{ij} x_j / x_i`, which is `O(1)` in `μ`.
+Scaling it with `μ` would widen it as the solve tightens, exactly where the
+classification should be sharpest.
 
 The denominator has to be checked first. `|H_ii|` is a curvature scale only
 while the objective actually curves in that direction; on a poorly identified
@@ -143,35 +141,6 @@ active variable inside the band is `O(1)`, while the edges move as
 `sqrt(μ)`, so tightening separates them. The classification is returned to
 the caller in every case, since which region a variable falls in is not
 stable near a transition.
-
-The classifier requires `bound_relax_factor = 0`, and checks it rather than
-documenting it. The default lets a converged primal sit outside its bound by
-`factor · max(1, |bound|)`, so `s` is not the distance to the user's bound and
-`Σ = z/s` is scaled wrong, badly when the bound is large in magnitude. A user
-hits that by doing nothing, so a stated precondition the shipped default
-violates is not enough.
-
-Two conditions are checked at every call and warned on, not only in the tests.
-`s·z` away from `μ` means the point is off the central path or the bound was
-relaxed, so the slack being classified is not the user's slack. `Σ_i/|H_ii|`
-non-negligible on a variable the reduction kept means barrier curvature
-survived the projection into a block that is supposed to be free of it.
-
-This is new code in the Rust core, alongside `classify_working_set`
-(`crates/pounce-sensitivity/src/convenience.rs`, exposed through
-`crates/pounce-py`), which answers the membership question on fixed
-`mult_tol` and `primal_tol` and is the only thing in this area that ships
-today. It needs the solver to expose the bound multipliers, `μ`, and the
-Hessian diagonal: the pyomo session carries only the primal and the bounds,
-and the held factor is barrier-augmented (`sigma_x` enters the augmented
-system as `d_x` in `kkt/pd_full_space_solver.rs`), so `kkt_solve` inverts $W$
-and neither `Σ` nor $H$ is recoverable above it.
-
-`diagnose_bounds` (`python/notebooks/barrier_curvature_sensitivity.ipynb` §5)
-is the reference implementation of the shape and the oracle to validate
-against, not a primitive to call. Its `curv_ratio` is the quantity above; its
-status field, set from fixed `s` and `z` thresholds, is the part done
-differently here.
 
 **1. `information()`, the un-inverted sibling of `covariance()`.** Returns the
 information matrix over the block: the reduced Hessian, formed as the Schur
@@ -272,6 +241,14 @@ The `Σ` column is what skipping the subtraction in $H$ would cost.
 $S$ is conditional on the rest of $A$: with more than one pinned variable,
 $S_{ii}$ holds the others at their bounds rather than marginalizing over them.
 
+$S$ is also the least accurate thing either accessor returns. It is built from
+$H$, and recovering $H$ on a pinned variable means subtracting a `Σ` of order
+`1/μ`, which turns the factorization's relative error into an absolute one of
+`eps · Σ`. So $S$ carries roughly `log10(Σ)` fewer digits than the free block
+and gets worse as the solve tightens, the opposite direction from the re-solve
+`ambiguous` asks for. The free rows are unaffected, and so is a weakly active
+variable, whose `Σ` is the same order as the curvature it comes off.
+
 The last two rows warn as well as return: `ambiguous` that the regime is
 undetermined at this `μ` and that re-solving tighter will settle it,
 `unidentified` that the objective barely curves in that direction, so the
@@ -294,6 +271,27 @@ slice and `(Var, time)` block forms) is a new optional keyword, and
 `covariance(model)` with no `wrt=` reduces onto the declared set, which is
 exactly the v0.10 no-argument default, so the v0.9 surface is a
 forward-compatible subset.
+
+Item 0 is new code in the Rust core, alongside `classify_working_set`
+(`crates/pounce-sensitivity/src/convenience.rs`, exposed through
+`crates/pounce-py`), which answers the membership question on fixed
+`mult_tol` and `primal_tol` and is the only thing in this area shipping
+today. It needs the solver to expose the bound multipliers, `μ`, and the
+Hessian diagonal: the pyomo session carries only the primal and the bounds,
+and the held factor is barrier-augmented (`sigma_x` enters the augmented
+system as `d_x` in `kkt/pd_full_space_solver.rs`), so `kkt_solve` inverts $W$
+and neither `Σ` nor $H$ is recoverable above it. `diagnose_bounds`
+(`python/notebooks/barrier_curvature_sensitivity.ipynb` §5) is the reference
+implementation of the shape and the oracle to validate against, not a
+primitive to call.
+
+It also requires `bound_relax_factor = 0`, and checks it rather than
+documenting it, since the default lets a converged primal sit outside its
+bound and a user hits that by doing nothing. Two more conditions are checked
+at every call rather than only in the tests: `s·z` away from `μ`, meaning the
+point is off the central path or the bound was relaxed, and `Σ_i/|H_ii|`
+non-negligible on a variable the reduction kept, meaning barrier curvature
+survived the projection.
 
 Items 0 and 4 are the exception. Item 0 is Rust core work, since the multipliers,
 `μ` and the barrier diagonal all have to reach Python before anything can
