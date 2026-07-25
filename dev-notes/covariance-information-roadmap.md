@@ -105,6 +105,14 @@ classify(i):                          # a bounded variable, or an inequality row
     return ambiguous                  # in a gap between the band and an edge
 ```
 
+It requires `bound_relax_factor = 0` and checks it rather than documenting
+it, since the shipped default lets a converged primal sit outside its bound
+and a user hits that by doing nothing. Two more conditions are checked on
+every call, not only in the tests: `s·z` away from `μ`, meaning the point is
+off the central path or the bound was relaxed, and `Σ_i/|H_ii|` non-negligible
+on a variable the reduction kept, meaning barrier curvature survived the
+projection.
+
 Why it is shaped that way:
 
 - **The ratio, not `s` and `z` separately.** Both are `O(√μ)` at weak
@@ -269,26 +277,11 @@ forward-compatible subset.
 
 Items 0 and 4 are the exception. Item 4 changes which variables
 `covariance()` projects out, so a model with a weakly active bound gets
-different numbers than v0.9 returns. Item 0 is Rust core work, alongside
-`classify_working_set` (`crates/pounce-sensitivity/src/convenience.rs`,
-exposed through `crates/pounce-py`), which answers the membership question on
-fixed `mult_tol` and `primal_tol` and is the only thing in this area shipping
-today. It needs the solver to expose the bound multipliers, `μ` and the
-Hessian diagonal: the pyomo session carries only the primal and the bounds,
-and the held factor is barrier-augmented (`sigma_x` enters the augmented
-system as `d_x` in `kkt/pd_full_space_solver.rs`), so `kkt_solve` inverts $W$
-and neither `Σ` nor $H$ is recoverable above it. `diagnose_bounds`
-(`python/notebooks/barrier_curvature_sensitivity.ipynb` §5) is the reference
-implementation of the shape and the oracle to validate against, not a
-primitive to call.
-
-Item 0 also requires `bound_relax_factor = 0`, and checks it rather than
-documenting it, since the default lets a converged primal sit outside its
-bound and a user hits that by doing nothing. Two more conditions are checked
-at every call rather than only in the tests: `s·z` away from `μ`, meaning the
-point is off the central path or the bound was relaxed, and `Σ_i/|H_ii|`
-non-negligible on a variable the reduction kept, meaning barrier curvature
-survived the projection.
+different numbers than v0.9 returns. Item 0 is Rust core work rather than
+pyomo surface, because the bound multipliers, `μ` and the Hessian diagonal
+are not reachable from the pyomo session: it carries only the primal and the
+bounds, and the held factor is barrier-augmented, so `kkt_solve` inverts $W$
+and neither `Σ` nor $H$ can be recovered above it.
 
 Until they land, `information()` inherits the shipped slack-only
 classification, so items 1 to 3 are complete for interior solutions and misfile
@@ -302,7 +295,9 @@ a weakly active bound exactly as `covariance()` does now.
   every other free-block number moves by `O(μ)` and no more; and `Σ_i/|H_ii|`
   stays `O(μ)` on the variables the reduction keeps, since a non-negligible
   ratio there is barrier curvature surviving the projection. Against
-  `diagnose_bounds` on the same points, including one it calls `ambiguous`.
+  `diagnose_bounds` (`python/notebooks/barrier_curvature_sensitivity.ipynb`
+  §5) on the same points, including one it calls `ambiguous`. That routine is
+  the reference implementation of the shape, not a primitive to call.
 - The classification itself across the `μ` sweep, not just the numbers: record
   every label change. An `ambiguous` variable must settle into a regime as `μ`
   tightens, which is what item 0's re-solve instruction promises, and a
