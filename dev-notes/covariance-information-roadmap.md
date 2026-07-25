@@ -207,48 +207,36 @@ row a fitted variable $i$ gets in each:
 
 The `Σ` column is what skipping the subtraction in $H$ would cost.
 
-$S$ is conditional on the rest of $A$: with more than one pinned variable,
-$S_{ii}$ holds the others at their bounds rather than marginalizing over them.
+$S$ carries two caveats the table cannot. It is conditional on the rest of
+$A$: with more than one pinned variable, $S_{ii}$ holds the others at their
+bounds rather than marginalizing over them. And it is the least accurate
+thing either accessor returns, since recovering $H$ there subtracts a `Σ` of
+order `1/μ`, turning the factorization's relative error into an absolute one
+of `eps · Σ`. So $S$ loses roughly `log10(Σ)` digits, and gets worse as the
+solve tightens, the opposite direction from the re-solve `ambiguous` asks
+for. Free rows and weakly active variables are unaffected.
 
-$S$ is also the least accurate thing either accessor returns. It is built from
-$H$, and recovering $H$ on a pinned variable means subtracting a `Σ` of order
-`1/μ`, which turns the factorization's relative error into an absolute one of
-`eps · Σ`. So $S$ carries roughly `log10(Σ)` fewer digits than the free block
-and gets worse as the solve tightens, the opposite direction from the re-solve
-`ambiguous` asks for. The free rows are unaffected, and so is a weakly active
-variable, whose `Σ` is the same order as the curvature it comes off.
-
-The classification comes back with the matrix in every case, since which
-region a variable falls in is not stable near a transition, and the last two
-rows warn as well as return. `ambiguous` says the regime is undetermined at
-this `μ` and that re-solving tighter will settle it, which works because the
-drift that pushes an inactive or strongly active variable into the band is
-`O(1)` while the edges move as `sqrt(μ)`. `unidentified` says the objective
-barely curves in that direction, so the bound question does not arise and the
-variance is large rather than small.
-$F$ is the conservative side for `covariance()`, which reports a variance
-rather than asserting zero, and the anti-conservative side for
-`information()`, which reports full information on a variable that may not
-have it, so those warnings are doing real work rather than annotating a
-number that is fine.
+The classification comes back with the matrix in every case, and the last two
+rows warn as well: `ambiguous` that re-solving tighter will settle it, which
+works because the drift into the band is `O(1)` while the edges move as
+`sqrt(μ)`; `unidentified` that the variance is large rather than small. $F$
+is the conservative side for `covariance()` and the anti-conservative side
+for `information()`, so those warnings are load-bearing rather than
+decoration.
 
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
 `tol = 1e-6 * (1.0 + abs(xv))`), which pins a weakly active variable and
 deletes its information.
 
-An active constraint row is classified but not projected, and the reason is
-that the table above is indexed by coordinate. A bound deletes a coordinate;
-a row removes a direction. `A ≤ cap` happens to pin the coordinate `A`, so
-deleting it is right, but `A + B ≤ 1` pins a combination and deleting either
-coordinate is wrong. Handling the general case means the reduced Hessian on
-the null space of the active Jacobian, which is a different construction from
-restricting to the free coordinates, and it is out of scope for v0.10 on that
-basis rather than because it does not matter.
-
-So a fitted variable held by an active row is returned with its
-classification and its warning, which is the signal that is missing today
-(jkitchin/pounce#362), and with the unprojected number. Where the row's
-normal is a single fitted coordinate, which is what the bound rewrite in
+An active constraint row is classified but not projected, because the table
+is indexed by coordinate and a row removes a direction rather than a
+coordinate. `A ≤ cap` pins the coordinate `A`, but `A + B ≤ 1` pins a
+combination and deleting either coordinate is wrong. The general case is the
+reduced Hessian on the null space of the active Jacobian, out of scope for
+v0.10 on that basis rather than because it does not matter. So a row-pinned
+fitted variable comes back classified and warned, which is the signal missing
+today (jkitchin/pounce#362), with the unprojected number. Where the row's
+normal is a single fitted coordinate, as the bound rewrite in
 jkitchin/pounce#357 produces, the existing disposition applies and the two
 spellings agree.
 
