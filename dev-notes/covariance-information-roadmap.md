@@ -83,11 +83,11 @@ un-inverted, per-block object is what the roadmap below adds.
 
 ## Roadmap
 
-Item 0 is core work and everything below consumes it. Items 1 to 3 are
+Item 0 is Rust core work and everything below consumes it. Items 1 to 3 are
 additive pyomo surface and can land before it, on the shipped classifier,
 which is correct for interior solutions. Item 4 cannot.
 
-**0. The bound classifier → core.** Which regime each bounded variable is in,
+**0. The bound classifier → Rust core.** Which regime each bounded variable is in,
 decided by the ratio of the barrier curvature on it to the objective's own
 curvature there, `Σ_i / |H_ii|`. That ratio is `O(μ)` when the bound is
 inactive, `O(1)` when weakly active, and `O(1/μ)` when strongly active, so the
@@ -103,19 +103,26 @@ Statuses are `inactive`, `weakly active`, `strongly active`, and `ambiguous`
 for a ratio between the bands, returned to the caller in every case, since
 which band a variable falls in is not stable near a transition.
 
-The shape is `diagnose_bounds`
-(`python/notebooks/barrier_curvature_sensitivity.ipynb` §5), which already
-computes the ratio and prints it, though it sets its status from fixed `s` and
-`z` thresholds instead. Its signature is the core-surface ask: `x`, `lb`, `ub`,
-`z_lower`, `z_upper`, `mu`, and the original Lagrangian Hessian. `_Session`
-captures only `x`, `x_l` and `x_u`, and the held factor is barrier-augmented
-(`sigma_x` enters the augmented system as `d_x` in
-`kkt/pd_full_space_solver.rs`), so `kkt_solve` inverts $W$ and neither `Σ` nor
-$H$ is reachable from Python today. `pounce.classify_working_set` answers the
-membership question on fixed `mult_tol` and `primal_tol`, not the regime one.
+This is new code in the Rust core, alongside `classify_working_set`
+(`crates/pounce-sensitivity/src/convenience.rs`, exposed through
+`crates/pounce-py`), which answers the membership question on fixed
+`mult_tol` and `primal_tol` and is the only thing in this area that ships
+today. It needs the solver to expose the bound multipliers, `μ`, and the
+Hessian diagonal: the pyomo session carries only the primal and the bounds,
+and the held factor is barrier-augmented (`sigma_x` enters the augmented
+system as `d_x` in `kkt/pd_full_space_solver.rs`), so `kkt_solve` inverts $W$
+and neither `Σ` nor $H$ is recoverable above it.
 
-The other consumer is the active-set sensitivity roadmap, whose item 0 returns
-this classification in its report and whose item 3 fires on it.
+`diagnose_bounds` (`python/notebooks/barrier_curvature_sensitivity.ipynb` §5)
+is the reference implementation of the shape and the oracle to validate
+against, not a primitive to call. Its `curv_ratio` is the quantity above; its
+status field, set from fixed `s` and `z` thresholds, is the part done
+differently here.
+
+Rust rather than the pyomo frontend because the consumers are plural: item 4
+below, the active-set sensitivity roadmap's item 0 report and item 3 trigger,
+and the jax and torch paths, whose active-set-margin monitor asks a related
+question.
 
 **1. `information()`, the un-inverted sibling of `covariance()`.** Returns the
 information matrix over the block: the reduced Hessian, formed as the Schur
@@ -223,7 +230,7 @@ slice and `(Var, time)` block forms) is a new optional keyword, and
 exactly the v0.10 no-argument default, so the v0.9 surface is a
 forward-compatible subset.
 
-Items 0 and 4 are the exception. Item 0 is core work, since the multipliers,
+Items 0 and 4 are the exception. Item 0 is Rust core work, since the multipliers,
 `μ` and the barrier diagonal all have to reach Python before anything can
 classify. Item 4 then changes which variables `covariance()` projects out, so
 a model with a weakly active bound gets different numbers than v0.9 returns.
