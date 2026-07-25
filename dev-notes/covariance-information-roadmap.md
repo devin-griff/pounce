@@ -82,40 +82,28 @@ per-block object is what the roadmap below adds.
 
 ## Roadmap
 
-**1. `information()`, the un-inverted sibling of `covariance()`.** Returns
-the information matrix over the block: the reduced Hessian, formed directly
-from the held factor (the Schur complement onto the block's rows) rather than
-by inverting the covariance, which skips the round trip and stays well-scaled
-in the poorly-identified directions.
+**1. `information()`, the un-inverted sibling of `covariance()`.** Returns the
+information matrix over the block: the reduced Hessian, formed as the Schur
+complement onto the block's rows off the held factor, not by inverting the
+covariance.
 
-It returns natural units, the core's convention, since a consumer whose
-objective already carries its own inverse-covariance weights needs the
-unscaled object; pyomo `covariance()` carries the `2σ²` scaling on
-top. `inv(covariance(...))` recovers it only for pooled residuals: with
-labeled residual groups of unequal variance `covariance()` is a
-heteroscedastic sandwich (`sens.py:995` Lagrangian, `sens.py:969`
-Gauss-Newton), whose inverse is no scalar multiple of a reduced Hessian.
-Same `hessian=` selector: Lagrangian (default, the exact reduced Hessian,
-what the information-form arrival cost wants) and Gauss-Newton (PSD).
+Natural units, the core's convention; pyomo `covariance()` carries the `2σ²`
+scaling on top. Same `hessian=` selector, Lagrangian (default) or Gauss-Newton
+(PSD).
 
 Pinned variables are projected out: the information matrix is restricted to the
 free block, the square block over the variables that remain, which is
-`covariance()`'s existing construction, never inverted first and then
-restricted. Item 4 decides which variables are pinned, and it is not simply the
-ones at a bound. The embedding differs.
+`covariance()`'s existing construction. The embedding differs.
 `covariance()` embeds a pinned parameter as a zero row, reading as zero
-variance; the same zeros in an information matrix read as zero information,
-the opposite claim. So `information()` returns the free block plus the
-reduction onto the pinned set as a block, the finite weights describing how the
-objective curves as those variables leave their bounds, computable only from
-the held factor. Item 4 gives the expression and the per-regime dispositions.
+variance; the same zeros in an information matrix read as zero information.
+So `information()` returns the free block plus the reduction onto the pinned
+set, the finite weight on each pinned variable as it leaves its bound,
+computable only from the held factor. Item 4 decides membership and gives the
+expression.
 
 It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`).
-`Σ`'s large entries sit on the variables the projection deletes, so it
-removes them; `δ_w I` is isotropic, lands on the free block, and survives.
-pounce bakes it into the held factor (`kkt_perturbations()` in `solver.rs`),
-and it is injected precisely where the Hessian is indefinite or near-singular,
-which is the poorly-identified regime.
+`δ_w I` is isotropic, so unlike `Σ` it lands on the free block and survives the
+projection.
 
 **2. `wrt=` block selection.** `covariance(model, wrt=block)` and
 `information(model, wrt=block)` reduce onto the given block, any free
