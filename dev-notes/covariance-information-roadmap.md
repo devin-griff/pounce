@@ -105,10 +105,10 @@ restricted. Item 4 decides which variables are pinned, and it is not simply the
 ones at a bound. The embedding differs.
 `covariance()` embeds a pinned parameter as a zero row, reading as zero
 variance; the same zeros in an information matrix read as zero information,
-the opposite claim. So `information()` returns the free block plus, for each
-pinned variable, the reduction onto it, the finite weight describing how the
-objective curves as that variable leaves its bound, computable only from the
-held factor. Item 4 gives the expression and the per-regime dispositions.
+the opposite claim. So `information()` returns the free block plus the
+reduction onto the pinned set as a block, the finite weights describing how the
+objective curves as those variables leave their bounds, computable only from
+the held factor. Item 4 gives the expression and the per-regime dispositions.
 
 It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`).
 `Σ`'s large entries sit on the variables the projection deletes, so it
@@ -168,13 +168,15 @@ the slack side contributes `μ/s²`, so the active bound sets the regime.
 
 Write $W$ for the primal Hessian block the held factor carries, $H = W - \Sigma$
 for the Lagrangian one, $F$ for the variables the reduction keeps and $A$ for
-the ones it projects out. What each accessor gives for a fitted variable $i$:
+the ones it projects out, and $S = H_{AA} - H_{AF} H_{FF}^{-1} H_{FA}$ for the
+reduction onto the pinned set. Each accessor returns a matrix over the whole
+block; the columns are the row a fitted variable $i$ gets in each:
 
-| bound regime | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` | `information()` |
+| bound regime | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` row | `information()` row |
 |---|---|---|---|---|---|---|
-| inactive | `O(1)` | `→ 0` | `μ/s² → 0` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{ii}$ | $H_{iF}$ |
-| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | $A$ | $0$ | $H_{ii} - H_{iF} H_{FF}^{-1} H_{Fi}$ |
-| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{ii}$ | $H_{iF}$ |
+| inactive | `O(1)` | `→ 0` | `μ/s² → 0` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
+| strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | $A$ | $0$ | $S_{iA}$ |
+| weakly active | `→ 0` | `→ 0` | finite, `O(1)` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
 
 Three regimes, two dispositions: the first and last rows agree, so weakly
 active is not a third treatment but the case a slack-only test misfiles into
@@ -182,6 +184,13 @@ $A$. $\Sigma$ comes off in every row, since that is what makes $H$ the
 Lagrangian Hessian rather than the barrier one; the `Σ` column is what skipping
 that subtraction would cost, `O(μ)` and harmless when inactive, a factor when
 weakly active, unbounded when pinned.
+
+$S$ is a block, not a diagonal. Its off-diagonals are the coupling between two
+pinned variables and are generally nonzero, so reporting $S_{ii}$ alone loses
+them. Its diagonal is conditional on the rest of $A$: with two pinned
+variables, $S_{ii}$ answers how the objective curves as $i$ leaves its bound
+with the other held at its own, which is a different number from the reduction
+that marginalizes over that variable instead.
 
 The classification is returned with the matrix in every regime, since which
 side of a tolerance a variable falls on is not stable.
@@ -192,18 +201,40 @@ deletes its information, so this is the one item that changes `covariance()`'s
 numbers rather than only adding surface. A solver that relaxed the bound
 reports a slack that is not the true slack.
 
+Both halves of this item need core surface that does not exist. The joint test
+needs the bound multipliers $z^L$ and $z^U$ at the solution, and subtracting
+$\Sigma$ needs the barrier diagonal. `_Session` captures only the primal $x$,
+and `Solver` exposes `kkt_dim`, `kkt_solve`, `kkt_perturbations`,
+`multiplier_rows` and `reduced_hessian`, none of which carry either. The held
+factor is barrier-augmented (`sigma_x` enters the augmented system as `d_x` in
+`kkt/pd_full_space_solver.rs`), so what `kkt_solve` inverts is $W$, and there
+is no path from Python to $H$. That subtraction is invisible in v0.9 only
+because the slack-only test already deletes every variable whose $\Sigma$ is
+non-negligible; keeping the weakly active ones is what creates the need.
+
+The classifier itself exists in the core: `pounce.classify_working_set` takes
+`z_l` and `z_u` alongside the slacks and returns the joint classification. It
+thresholds on fixed `mult_tol` and `primal_tol` rather than on `μ`, so the
+`μ`-tied comparison above is the part still to build.
+
 ## Scope and compatibility
 
-pyomo-pounce only. Items 1 to 3 are additive: `information()` is a new
+Items 1 to 3 are pyomo-pounce only and additive: `information()` is a new
 function, `wrt=` (with its slice and `(Var, time)` block forms) is a new
 optional keyword, and `retain_kkt()` is new surface. No signature changes, and
 v0.9 `covariance(model)` with no `wrt=` reduces onto the declared set, which is
 exactly the v0.10 no-argument default, so the v0.9 surface is a
 forward-compatible subset.
 
-Item 4 is the exception: the joint activity test changes which variables
-`covariance()` projects out, so a model with a weakly active bound gets
-different numbers than v0.9 returns.
+Item 4 is the exception on both counts. It is a core change before it is a
+pyomo one, since the bound multipliers and the barrier diagonal have to reach
+Python first. And it changes which variables `covariance()` projects out, so a
+model with a weakly active bound gets different numbers than v0.9 returns.
+
+That ordering bounds what items 1 to 3 are worth on their own. Until item 4
+lands, `information()` inherits the shipped slack-only classification, so it is
+complete for interior solutions and misfiles a weakly active bound exactly as
+`covariance()` does now.
 
 ## Validation
 
@@ -215,8 +246,15 @@ different numbers than v0.9 returns.
   different.
 - A strongly active fitted variable: the free block matches the same model solved
   with that variable fixed (a bounds-to-equalities substitution, so LICQ is
-  assumed), and the pinned variable reports
-  $H_{ii} - H_{iF} H_{FF}^{-1} H_{Fi}$ with the activity classification.
+  assumed), and the pinned variable reports $S_{ii}$ with the activity
+  classification. $S_{ii}$ is checkable directly: it is the second derivative
+  of the objective minimized over the free variables with that variable held at
+  a value and its own bound dropped, and the first derivative of that same
+  function is the bound multiplier.
+- Two strongly active fitted variables: the off-diagonal $S_{ij}$ is reported
+  and matches the same construction, so the coupling between two pinned
+  variables is not dropped. Its diagonal is conditional, so $S_{ii}$ here
+  differs from the same variable's value when the other is free.
 - Refining the solver's `μ` moves the free-block numbers by `O(μ)` and no
   more. Necessary, not sufficient: the weakly-active case is `μ`-invariant and
   barrier-inflated at once, so it pairs with the slack-and-multiplier
@@ -226,6 +264,9 @@ different numbers than v0.9 returns.
   in the free block with its diagonal matching the objective's curvature in
   that variable, not twice it, and is reported as weakly active. Both hold
   across a sweep in `μ`.
+- The `μ`-tied tolerances against `classify_working_set`'s fixed ones, on a
+  weakly active bound solved at several `μ`. The fixed `primal_tol` is the
+  regime where they disagree, since the slack there scales as `sqrt(μ)`.
 - An indefinite Lagrangian free block returns the settled outcome, refusal or a
   Gauss-Newton fallback, not a matrix that makes a downstream quadratic
   unbounded below.
