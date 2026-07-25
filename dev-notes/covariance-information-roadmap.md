@@ -98,10 +98,11 @@ Gauss-Newton), whose inverse is no scalar multiple of a reduced Hessian.
 Same `hessian=` selector: Lagrangian (default, the exact reduced Hessian,
 what the information-form arrival cost wants) and Gauss-Newton (PSD).
 
-Bound-active variables are projected out: the information matrix is
-restricted to the free block, the square block over the variables not at a
-bound, which is `covariance()`'s existing construction, never inverted first
-and then restricted. The embedding differs.
+Pinned variables are projected out: the information matrix is restricted to the
+free block, the square block over the variables that remain, which is
+`covariance()`'s existing construction, never inverted first and then
+restricted. Item 4 decides which variables are pinned, and it is not simply the
+ones at a bound. The embedding differs.
 `covariance()` embeds a pinned parameter as a zero row, reading as zero
 variance; the same zeros in an information matrix read as zero information,
 the opposite claim. So `information()` returns the free block plus, for each
@@ -129,7 +130,7 @@ state at one time point is one call rather than an enumeration.
 Each call re-reduces onto its own argument, giving that block's marginal, so
 one solve serves as many blocks as you ask about.
 
-A bound-active variable outside the block is not deleted: its `Σ` stays in
+A strongly active variable outside the block is not deleted: its `Σ` stays in
 the held factor, and as `μ` falls that growing diagonal drives the coupling
 through it to zero, so the block converges to the value conditional on that
 bound rather than the marginal over it. The active set is returned with the
@@ -166,8 +167,8 @@ what makes the multiplier necessary. It sums over both bounds,
 the slack side contributes `μ/s²`, so the active bound sets the regime.
 
 Write $W$ for the primal Hessian block the held factor carries, $H = W - \Sigma$
-for the Lagrangian one, $F$ for the variables not at a bound and $A$ for the
-pinned ones. What each accessor gives for a fitted variable $i$:
+for the Lagrangian one, $F$ for the variables the reduction keeps and $A$ for
+the ones it projects out. What each accessor gives for a fitted variable $i$:
 
 | bound regime | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` | `information()` |
 |---|---|---|---|---|---|---|
@@ -212,14 +213,14 @@ different numbers than v0.9 returns.
   holds only there: a bound active makes `covariance()` singular (the pinned
   row is zero) and grouped residuals of unequal variance make the two objects
   different.
-- A bound-active fitted variable: the free block matches the same model solved
+- A strongly active fitted variable: the free block matches the same model solved
   with that variable fixed (a bounds-to-equalities substitution, so LICQ is
   assumed), and the pinned variable reports
   $H_{ii} - H_{iF} H_{FF}^{-1} H_{Fi}$ with the activity classification.
 - Refining the solver's `μ` moves the free-block numbers by `O(μ)` and no
   more. Necessary, not sufficient: the weakly-active case is `μ`-invariant and
   barrier-inflated at once, so it pairs with the slack-and-multiplier
-  classification. A block conditioned on a bound-active variable outside it
+  classification. A block conditioned on a strongly active variable outside it
   does move with `μ`, which is correct.
 - A weakly-active fitted variable (slack and multiplier both near zero) stays
   in the free block with its diagonal matching the objective's curvature in
