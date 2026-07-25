@@ -98,20 +98,20 @@ Gauss-Newton), whose inverse is no scalar multiple of a reduced Hessian.
 Same `hessian=` selector: Lagrangian (default, the exact reduced Hessian,
 what the information-form arrival cost wants) and Gauss-Newton (PSD).
 
-Bound-active directions are projected out: the information matrix is
-restricted to the free block, the square block over the directions not at a
+Bound-active variables are projected out: the information matrix is
+restricted to the free block, the square block over the variables not at a
 bound, which is `covariance()`'s existing construction, never inverted first
 and then restricted. The embedding differs.
 `covariance()` embeds a pinned parameter as a zero row, reading as zero
 variance; the same zeros in an information matrix read as zero information,
 the opposite claim. So `information()` returns the free block plus, for each
-pinned direction, the reduction onto it, the finite weight describing how the
+pinned variable, the reduction onto it, the finite weight describing how the
 objective curves as that variable leaves its bound, computable only from the
 held factor. Item 4 gives the expression and the per-regime dispositions.
 
 It carries `covariance()`'s inertia-correction guardrail (`sens.py:814-820`).
-`Σ` is rank-structured onto the deleted directions, so the projection
-removes it; `δ_w I` is isotropic, lands on the free block, and survives.
+`Σ`'s large entries sit on the variables the projection deletes, so it
+removes them; `δ_w I` is isotropic, lands on the free block, and survives.
 pounce bakes it into the held factor (`kkt_perturbations()` in `solver.rs`),
 and it is injected precisely where the Hessian is indefinite or near-singular,
 which is the poorly-identified regime.
@@ -166,7 +166,7 @@ what makes the multiplier necessary. It sums over both bounds,
 the slack side contributes `μ/s²`, so the active bound sets the regime.
 
 Write $W$ for the primal Hessian block the held factor carries, $H = W - \Sigma$
-for the Lagrangian one, $F$ for the free directions and $A$ for the pinned.
+for the Lagrangian one, $F$ for the variables not at a bound and $A$ for the pinned ones.
 What each accessor gives for a fitted variable $i$:
 
 | bound regime | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` | `information()` |
@@ -200,7 +200,7 @@ v0.9 `covariance(model)` with no `wrt=` reduces onto the declared set, which is
 exactly the v0.10 no-argument default, so the v0.9 surface is a
 forward-compatible subset.
 
-Item 4 is the exception: the joint activity test changes which directions
+Item 4 is the exception: the joint activity test changes which variables
 `covariance()` projects out, so a model with a weakly active bound gets
 different numbers than v0.9 returns.
 
@@ -214,7 +214,7 @@ different numbers than v0.9 returns.
   different.
 - A bound-active fitted variable: the free block matches the same model solved
   with that variable fixed (a bounds-to-equalities substitution, so LICQ is
-  assumed), and the pinned direction reports
+  assumed), and the pinned variable reports
   $H_{ii} - H_{iF} H_{FF}^{-1} H_{Fi}$ with the activity classification.
 - Refining the solver's `μ` moves the free-block numbers by `O(μ)` and no
   more. Necessary, not sufficient: the weakly-active case is `μ`-invariant and
@@ -223,7 +223,7 @@ different numbers than v0.9 returns.
   does move with `μ`, which is correct.
 - A weakly-active fitted variable (slack and multiplier both near zero) stays
   in the free block with its diagonal matching the objective's curvature in
-  that direction, not twice it, and is reported as weakly active. Both hold
+  that variable, not twice it, and is reported as weakly active. Both hold
   across a sweep in `μ`.
 - An indefinite Lagrangian free block returns the settled outcome, refusal or a
   Gauss-Newton fallback, not a matrix that makes a downstream quadratic
