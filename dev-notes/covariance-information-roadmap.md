@@ -99,9 +99,22 @@ Thresholding `s` and `z` separately does not work at any constant. Both are
 when `μ` lands in its band. `sqrt(μ)` as the threshold fails the other way, by
 putting the case the test exists to find exactly on it.
 
-Statuses are `inactive`, `weakly active`, `strongly active`, and `ambiguous`
-for a ratio between the bands, returned to the caller in every case, since
-which band a variable falls in is not stable near a transition.
+Cutoffs, for `μ ≤ 1e-4`: `inactive` below `sqrt(μ)`, `weakly active` in
+`[1e-1, 1e1]`, `strongly active` above `1/sqrt(μ)`, `ambiguous` in the two
+gaps. The outer edges are the geometric midpoints between the regimes'
+scalings, so the weakly active case sits at the centre with
+`0.5·|log μ|` decades of margin either side. Above `μ = 1e-4` the outer
+edges close inside the inner band and everything not clearly outside is
+`ambiguous`, which is the honest answer at that tolerance.
+
+The inner band is wider than the ideal case needs, since `Σ = H_ii` exactly
+at weak activity and the ratio is `1` there whatever the problem scaling.
+It is set for the other two, which carry scale: `μ/(s² H_ii)` and
+`z²/(μ H_ii)` drift toward the centre when the objective's curvature is far
+from the bound's own scale, and the drift is what the gaps absorb.
+
+The classification is returned to the caller in every case, since which
+region a variable falls in is not stable near a transition.
 
 This is new code in the Rust core, alongside `classify_working_set`
 (`crates/pounce-sensitivity/src/convenience.rs`, exposed through
