@@ -168,9 +168,10 @@ what happened" (sIPOPT exposes no such report).
 The classification is the shared bound classifier specified as item 0 of the
 covariance roadmap (`covariance-information-roadmap.md`): the regime of each
 bounded variable, read off the ratio of its barrier curvature to the
-objective's own curvature. That is core work, since the multipliers, `mu` and
-the barrier diagonal all have to reach Python first, and it gates this item
-and item 3. The breakpoint half has no such dependency.
+objective's own curvature. That is Rust core work, since the multipliers, `mu`
+and the barrier diagonal all have to be exposed through `crates/pounce-py`
+first, and it gates this item and item 3. The breakpoint half has no such
+dependency.
 
 **1. Fix-relax + `mu`-correction → sIPOPT parity.** Two changes together
 constitute full parity. **(a) Fix-relax** (the substantial one): upgrade
