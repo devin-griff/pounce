@@ -220,6 +220,18 @@ conditional: the classification is a threshold scan, always paid; the QP
 fires only on a degenerate base point, over the weakly-active set, at roughly
 a backsolve per weakly-active constraint.
 
+There is no side to choose for `estimate()`. The call names a perturbation, so
+the direction is given, and eq. 14 takes `Δp` as an input. It returns the
+directional value for the direction asked, with no signature change and no
+refusal, so a loop stepping a saturated control keeps running.
+
+`gradient()` is where the two-valuedness is real, since `dx/dp` with no
+direction has two answers at a kink. It keeps returning a float, warns that
+the base point is degenerate and the value one-sided, and reports which side,
+so a caller who needs the other one asks through `estimate()`. Refusing would
+break a call that always answers today over a condition most users will not
+recognize.
+
 **4. Corrector-step primitive → past sIPOPT.** One Newton/primal-dual
 iteration reusing the held factorization, returning the residual. Small
 and general; it composes with path-following (path-following gets the
