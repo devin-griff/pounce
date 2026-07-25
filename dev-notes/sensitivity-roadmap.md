@@ -257,18 +257,11 @@ the active-set correction opt-in.
 
 ## Scope boundary: mechanism in pounce, policy in the caller
 
-Everything above is a **mechanism**: a stateless operation on the held
-factorization (a step, a corrector iteration, a fix-relax solve, a
-breakpoint test) plus the diagnostics to decide. The **policy** — how many
-correctors, when to stop, which mode per cycle, whether to abandon the
-estimate and call a full `solve()` instead, the advanced-step
-solve-ahead-then-update orchestration — belongs to the downstream consumer.
-
-The line: a loop whose size is fixed by the problem or by numerical
-convergence runs to completion inside pounce, so path-following across its
-crossings and a corrector loop to a residual tolerance both live here. A
-loop whose size is fixed by an external budget lives in the caller and
-drives the raw single step, because only the caller knows the deadline.
+A loop whose size is fixed by the problem or by numerical convergence runs to
+completion inside pounce, so path-following across its crossings and a
+corrector loop to a residual tolerance both live here. A loop whose size is
+fixed by an external budget lives in the caller and drives the raw single
+step, because only the caller knows the deadline.
 
 ## Validation
 
