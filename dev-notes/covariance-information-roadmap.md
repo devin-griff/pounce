@@ -259,26 +259,28 @@ the ones it projects out, and $S = H_{AA} - H_{AF} H_{FF}^{-1} H_{FA}$ for the
 reduction onto the pinned set. Each accessor returns a matrix over the whole
 block; the columns are the row a fitted variable $i$ gets in each:
 
-| bound regime | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` row | `information()` row |
+| status | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` row | `information()` row |
 |---|---|---|---|---|---|---|
 | inactive | `O(1)` | `→ 0` | `μ/s² → 0` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
 | strongly active | `→ 0` | `O(1)` | `z²/μ → ∞` | $A$ | $0$ | $S_{iA}$ |
 | weakly active | `→ 0` | `→ 0` | finite, `O(1)` | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
+| ambiguous | n/a | n/a | ratio in a band gap | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
+| unidentified | n/a | n/a | `|H_ii|` below scale | $F$ | $2\sigma^2 (H_{FF}^{-1})_{iF}$ | $H_{iF}$ |
 
 The `Σ` column is what skipping the subtraction in $H$ would cost.
 
 $S$ is conditional on the rest of $A$: with more than one pinned variable,
 $S_{ii}$ holds the others at their bounds rather than marginalizing over them.
 
-`ambiguous` and `unidentified` both go to $F$ with the weakly active row, and
-both warn: `ambiguous` that the regime is undetermined at this `μ` and that
-re-solving tighter will settle it, `unidentified` that the objective barely
-curves in that direction so the bound question does not arise and the variance
-is large rather than small. $F$ is the conservative side for `covariance()`,
-which reports a variance rather than asserting zero, and the
-anti-conservative side for `information()`, which reports full information on
-a variable that may not have it, so the warning is doing real work rather than
-annotating a number that is fine.
+The last two rows warn as well as return: `ambiguous` that the regime is
+undetermined at this `μ` and that re-solving tighter will settle it,
+`unidentified` that the objective barely curves in that direction, so the
+bound question does not arise and the variance is large rather than small.
+$F$ is the conservative side for `covariance()`, which reports a variance
+rather than asserting zero, and the anti-conservative side for
+`information()`, which reports full information on a variable that may not
+have it, so those warnings are doing real work rather than annotating a
+number that is fine.
 
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
 `tol = 1e-6 * (1.0 + abs(xv))`), which pins a weakly active variable and
