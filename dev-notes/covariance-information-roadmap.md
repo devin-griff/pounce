@@ -152,23 +152,21 @@ which bites here because `δ_w I` is isotropic and so, unlike `Σ`, lands on the
 free block and survives the projection.
 
 **2. `wrt=` block selection.** `covariance(model, wrt=block)` and
-`information(model, wrt=block)` reduce onto the given block, any free
-variables, off the held factor, post-solve. The factor captured at the
-solution covers every free variable, so the block is a call argument, not a
-fixed declaration. `declare_fitted` becomes the default block when `wrt=` is
-omitted, which keeps `covariance(model)` behaving exactly as in v0.9. The
-block, whether declared or passed to `wrt=`, accepts a slice (`m.x[t, :]`) or
-a `(Var, time)` pair, not just a hand-listed VarData set, so an MHE arrival
-state at one time point is one call rather than an enumeration.
+`information(model, wrt=block)` reduce onto any block of free variables off
+the held factor, post-solve, since the factor covers every free variable.
+`declare_fitted` is the default block when `wrt=` is omitted, so
+`covariance(model)` behaves exactly as in v0.9. The block accepts a slice
+(`m.x[t, :]`) or a `(Var, time)` pair, not only a hand-listed VarData set.
 
-Each call re-reduces onto its own argument, giving that block's marginal, so
-one solve serves as many blocks as you ask about.
+Each call re-reduces onto its own argument, so one solve serves as many
+blocks as you ask about, and each gets that block's marginal.
 
-A strongly active variable outside the block is not deleted: its `Σ` stays in
-the held factor, and as `μ` falls that growing diagonal drives the coupling
-through it to zero, so the block converges to the value conditional on that
-bound rather than the marginal over it. The active set is returned with the
-matrix, and the block's numbers move with `μ` on the way there.
+With one exception, which is returned rather than hidden. A strongly active
+variable outside the block is not deleted: its `Σ` stays in the held factor
+and drives the coupling through it to zero as `μ` falls, so the block
+converges to the value conditional on that bound rather than the marginal
+over it, and its numbers move with `μ` on the way. The active set comes back
+with the matrix.
 
 **3. `retain_kkt()`, a factor-retention switch decoupled from
 declarations.** The solve factors the KKT to solve the NLP; the only question
