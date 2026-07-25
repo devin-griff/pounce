@@ -134,10 +134,10 @@ primitives rather than reinvent them.
 
 Neither lives on the held-factorization / pyomo path that `estimate()`
 exposes to Pyomo models, so neither delivers the pyomo-pounce capability
-below. But item 0's diagnostics and item 3's weak-activity scan should
-reuse `QpSensitivity`'s vocabulary and detection primitive, and the pyomo
-path should share the same core Schur backsolve the jax follower already
-leans on.
+below, and neither supplies the classifier item 0 needs: `QpSensitivity`
+screens on a solver with no `mu`, so the barrier ratio that separates the
+regimes does not exist there. The pyomo path should share the same core Schur
+backsolve the jax follower already leans on.
 
 ## Two failure modes (they want different treatments)
 
@@ -162,9 +162,15 @@ the parity step.
 ratio test to the first crossing) and a report the estimate returns:
 which variables crossed, the residual, the `mu` used, and the activity
 classification, so a caller can tell a derivative from one element of a
-set. Cheap, needed by everything below, and useful on its own — it turns
-the current silent clamp into "here is what happened" (sIPOPT exposes no
-such report).
+set. Useful on its own — it turns the current silent clamp into "here is
+what happened" (sIPOPT exposes no such report).
+
+The classification is the shared bound classifier specified as item 0 of the
+covariance roadmap (`covariance-information-roadmap.md`): the regime of each
+bounded variable, read off the ratio of its barrier curvature to the
+objective's own curvature. That is core work, since the multipliers, `mu` and
+the barrier diagonal all have to reach Python first, and it gates this item
+and item 3. The breakpoint half has no such dependency.
 
 **1. Fix-relax + `mu`-correction → sIPOPT parity.** Two changes together
 constitute full parity. **(a) Fix-relax** (the substantial one): upgrade
@@ -199,14 +205,12 @@ base point, solve the small QP (the paper's eq. 14) over the weakly-active
 set for the correct one-sided derivative. Those constraints are already
 rows in the held factorization, so this is an active-set search over them
 on that factor, the same held-factor Schur primitive fix-relax uses
-(`IndexSchurData`), not a fresh QP solve. Detection reuses the
-weak-activity screen the convex-QP frontend already ships
-(`QpSensitivity`, `sensitivity.rs`); the correction is what pyomo-pounce
-adds. Independent of items 1 and 2, auto-triggered when the solve detects
-weak activity, not a user knob. Cost is conditional: the detection is a
-threshold scan over the converged multipliers, always paid; the QP fires
-only on a degenerate base point, over the weakly-active set, at roughly a
-backsolve per weakly-active constraint.
+(`IndexSchurData`), not a fresh QP solve. Detection is item 0's classifier;
+the correction is what pyomo-pounce adds. Independent of items 1 and 2,
+auto-triggered on a weakly active base point, not a user knob. Cost is
+conditional: the classification is a threshold scan, always paid; the QP
+fires only on a degenerate base point, over the weakly-active set, at roughly
+a backsolve per weakly-active constraint.
 
 **4. Corrector-step primitive → past sIPOPT.** One Newton/primal-dual
 iteration reusing the held factorization, returning the residual. Small
@@ -262,7 +266,8 @@ drives the raw single step, because only the caller knows the deadline.
 
 - **diagnostics** — breakpoint detection (which variable crosses first,
   and the step fraction) against a brute-force ratio-test scan; the report
-  fields (crossed set, residual, `mu`) against ground truth.
+  fields (crossed set, residual, `mu`, classification) against ground truth.
+  The classifier itself is validated in the covariance roadmap.
 - **fix-relax** against sIPOPT's own worked example (the paper's §2.8
   parametric QP with a documented active-set change) and against a full
   re-solve.
