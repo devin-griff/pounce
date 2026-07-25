@@ -60,24 +60,6 @@ Two limits matter for what comes next:
    reports over the whole `declare_fitted` set. Asking about a different
    block means re-declaring and re-solving.
 
-## Preconditions
-
-Four conditions underwrite the whole surface, and the roadmap handles two of
-them explicitly.
-
-Strict complementarity failing is the weakly active case, which item 0 detects
-and reports rather than assuming away. An active set that changes under
-perturbation is item 2's conditional-versus-marginal distinction, which is
-stated with the matrix.
-
-The other two are assumed. LICQ is what makes the active-set KKT nonsingular,
-and it is the precondition for the roadmap's own validation, since matching a
-free block against the same model solved with a variable fixed is a
-bounds-to-equalities substitution. Second-order sufficiency is what makes the
-reduced Hessian positive definite on the free space; when it fails the result
-is the indefinite free block item 1 returns with a warning, which is a
-diagnostic rather than an error but is not a covariance.
-
 ## Related reduced-Hessian work in other pounce interfaces
 
 pounce already surfaces the reduced Hessian outside pyomo-pounce. The core
@@ -90,9 +72,15 @@ of which `covariance()` is the Pyomo-model sibling.
 
 ## Roadmap
 
-Item 0 is Rust core work and everything below consumes it. Items 1 to 3 are
-additive pyomo surface and can land before it, on the shipped classifier,
-which is correct for interior solutions. Item 4 cannot.
+Items 1 to 3 are additive pyomo surface and can land on their own, running on
+the shipped classifier, which is correct for interior solutions. Items 0 and 4
+are what make the answer right at a bound, and item 4 consumes item 0.
+
+Notation used throughout. `Σ_i = z^L_i/s^L_i + z^U_i/s^U_i` is the barrier
+diagonal on variable `i`, summed over both bounds. $W$ is the primal Hessian
+block the held factor carries and $H = W - \Sigma$ is the Lagrangian one, so
+`H_ii` is that variable's objective curvature with the barrier removed. $F$ is
+the set of variables the reduction keeps, $A$ the ones it projects out.
 
 **0. The bound classifier → Rust core.** Which regime each bounded variable is in,
 decided by the ratio of the barrier curvature on it to the objective's own
@@ -117,7 +105,7 @@ edges close inside the inner band and everything not clearly outside is
 The inner band is fixed while the outer edges move because they absorb
 different things. The ratio is `1` at weak activity whatever `μ` and whatever
 the scaling, so the band only has to tolerate the coupling drift
-`Σ_i = H_ii + \sum_{j \ne i} H_{ij} x_j / x_i`, which is `O(1)` in `μ`.
+$\Sigma_i = H_{ii} + \sum_{j \ne i} H_{ij} x_j / x_i$, which is `O(1)` in `μ`.
 Scaling it with `μ` would widen it as the solve tightens, exactly where the
 classification should be sharpest.
 
@@ -218,15 +206,10 @@ out conditional on the pinned parameter, since fixing an input conditions
 rather than marginalizes.
 
 **4. Membership and dispositions.** What `covariance()` and `information()`
-each return for a variable, given item 0's classification. The barrier diagonal
-it is classified on sums over both bounds,
-`Σ_i = z^L_i/s^L_i + z^U_i/s^U_i`.
-
-Write $W$ for the primal Hessian block the held factor carries, $H = W - \Sigma$
-for the Lagrangian one, $F$ for the variables the reduction keeps and $A$ for
-the ones it projects out, and $S = H_{AA} - H_{AF} H_{FF}^{-1} H_{FA}$ for the
-reduction onto the pinned set. Each accessor returns a matrix over the whole
-block; the columns are the row a fitted variable $i$ gets in each:
+each return for a variable, given item 0's classification. Write
+$S = H_{AA} - H_{AF} H_{FF}^{-1} H_{FA}$ for the reduction onto the pinned
+set. Each accessor returns a matrix over the whole block; the columns are the
+row a fitted variable $i$ gets in each:
 
 | status | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` row | `information()` row |
 |---|---|---|---|---|---|---|
@@ -262,6 +245,24 @@ number that is fine.
 `covariance()` ships a slack-only test today (`sens.py:826-827`,
 `tol = 1e-6 * (1.0 + abs(xv))`), which pins a weakly active variable and
 deletes its information.
+
+## Preconditions
+
+Four conditions underwrite the whole surface, and the roadmap handles two of
+them explicitly.
+
+Strict complementarity failing is the weakly active case, which item 0 detects
+and reports rather than assuming away. An active set that changes under
+perturbation is item 2's conditional-versus-marginal distinction, which is
+stated with the matrix.
+
+The other two are assumed. LICQ is what makes the active-set KKT nonsingular,
+and it is the precondition for the roadmap's own validation, since matching a
+free block against the same model solved with a variable fixed is a
+bounds-to-equalities substitution. Second-order sufficiency is what makes the
+reduced Hessian positive definite on the free space; when it fails the result
+is the indefinite free block item 1 returns with a warning, which is a
+diagnostic rather than an error but is not a covariance.
 
 ## Scope and compatibility
 
