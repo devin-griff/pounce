@@ -192,6 +192,14 @@ strict complementarity, so where that fails the correction does not apply
 and item 3 is what handles it. Fix-relax carries the active set, the
 `mu`-correction finishes the predictor, and the two are full sIPOPT parity.
 
+Both assume the bounds hold still. A model may write a bound in terms of a
+declared Param, in which case perturbing it moves the bound, and fix-relax
+pins the variable to a value that has itself moved: the pin row needs
+`dl/dp` or `du/dp` rather than a constant, and the breakpoint test in item 0
+is a race between the variable and its own bound. Either support it or detect
+a parameter-dependent bound at declaration time and refuse, but not silently
+treat it as fixed.
+
 **2. Multi-crossing path-following → past sIPOPT (crossing axis).** Iterate
 the fix-relax across successive breakpoints toward the target
 perturbation. The 2012 paper takes the same stepwise shape for its QP
@@ -272,6 +280,9 @@ drives the raw single step, because only the caller knows the deadline.
 - **fix-relax** against sIPOPT's own worked example (the paper's §2.8
   parametric QP with a documented active-set change) and against a full
   re-solve.
+- **a parameter-dependent bound**: against a re-solve, and the refusal path
+  if that is the decision. A constant pin row passes every fixed-bound test
+  and is wrong here, so nothing else in this list catches it.
 - **path-following** against re-solve across several crossings.
 - **QP directional** against finite differences and a constructed
   weakly-active case.
