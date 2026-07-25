@@ -187,22 +187,21 @@ inverts $W$. The classifier itself exists: `pounce.classify_working_set` takes
 
 ## Scope and compatibility
 
-Items 1 to 3 are pyomo-pounce only and additive: `information()` is a new
-function, `wrt=` (with its slice and `(Var, time)` block forms) is a new
-optional keyword, and `retain_kkt()` is new surface. No signature changes, and
-v0.9 `covariance(model)` with no `wrt=` reduces onto the declared set, which is
+Items 1 to 3 are additive: `information()` is a new function, `wrt=` (with its
+slice and `(Var, time)` block forms) is a new optional keyword, and
+`retain_kkt()` is new surface. No signature changes, and v0.9
+`covariance(model)` with no `wrt=` reduces onto the declared set, which is
 exactly the v0.10 no-argument default, so the v0.9 surface is a
 forward-compatible subset.
 
-Item 4 is the exception on both counts. It is a core change before it is a
-pyomo one, since the bound multipliers and the barrier diagonal have to reach
-Python first. And it changes which variables `covariance()` projects out, so a
-model with a weakly active bound gets different numbers than v0.9 returns.
+Item 4 is the exception: it changes which variables `covariance()` projects
+out, so a model with a weakly active bound gets different numbers than v0.9
+returns. It also depends on the core exposing the bound multipliers and the
+barrier diagonal, so that work gates it.
 
-That ordering bounds what items 1 to 3 are worth on their own. Until item 4
-lands, `information()` inherits the shipped slack-only classification, so it is
-complete for interior solutions and misfiles a weakly active bound exactly as
-`covariance()` does now.
+Until it lands, `information()` inherits the shipped slack-only
+classification, so items 1 to 3 are complete for interior solutions and misfile
+a weakly active bound exactly as `covariance()` does now.
 
 ## Validation
 
