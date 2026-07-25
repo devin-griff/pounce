@@ -321,5 +321,3 @@ a weakly active bound exactly as `covariance()` does now.
 - Lagrangian versus Gauss-Newton agree on a linear model and in the
   small-residual limit; the Lagrangian can go indefinite where Gauss-Newton
   stays PSD.
-- MHE sanity: reducing a linear-Gaussian one-step subproblem onto its arrival
-  state matches the closed-form update.
