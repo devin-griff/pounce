@@ -130,10 +130,8 @@ Why it is shaped that way:
   the objective curves. An inactive bound a full unit from its variable
   classifies as `ambiguous` once `H_ii` reaches `1e-6` and as `strongly
   active` by `1e-13`, and tightening `μ` relocates the misfile rather than
-  removing it. The floor is the square root of machine precision relative to
-  the block's own largest curvature: below it a diagonal is noise, and on
-  the misfile table above the `1e-13` diagonal reads `unidentified` while
-  the marginal `1e-6` one reads `ambiguous` with its warning.
+  removing it. Below the square root of machine precision, relative to the
+  block's largest curvature, a diagonal is noise.
 - **Rows use the same `r`.** A row carries a slack and a multiplier with
   `s_j z_j = μ` exactly as a bound does, and its denominator reduces to
   `H_ii` when the row is a bound in disguise, so a limit written either way
@@ -164,13 +162,9 @@ $S$ carries one caveat the table cannot: it is conditional on the rest of
 $A$. With more than one pinned variable, $S_{ii}$ holds the others at their
 bounds rather than marginalizing over them.
 
-$S$ is built from the exact Lagrangian Hessian, which the solver retains at
-the converged iterate (`curr_exact_hessian` on the calculated-quantities
-handle), formed densely on the fitted block, which is small. Not from the
-held factor: the factor carries $W = H + \Sigma$, and recovering $H$ by
-subtraction would turn the factorization's relative error into an absolute
-one of `eps · Σ` on a pinned variable. The direct construction carries full
-precision at any `μ`.
+$S$ is built from the exact Lagrangian Hessian (`curr_exact_hessian`, which
+the solver retains), formed densely on the small fitted block: full precision
+at any `μ`, no recovery from the barrier-augmented factor.
 
 The last two rows warn as well as return: `ambiguous` that re-solving tighter will settle it, which
 works because the drift into the band is `O(1)` while the edges move as
@@ -292,10 +286,9 @@ different numbers than v0.9 returns. Item 0 is Rust core work rather than
 pyomo surface, because the bound multipliers, `μ` and the Hessian diagonal
 are not reachable from the pyomo session: it carries only the primal and the
 bounds, and the held factor is barrier-augmented, so `kkt_solve` inverts $W$
-and neither `Σ` nor $H$ can be recovered above it. On the Rust side nothing
-needs recovering: the converged state the backsolver already retains carries
-the bound multipliers and slacks, `curr_mu`, `curr_sigma_x`, and the exact
-Lagrangian Hessian, so the work is exposure, not computation.
+and neither `Σ` nor $H$ can be recovered above it. The Rust side retains
+everything the classifier needs at the converged iterate, so item 0 is
+exposure, not computation.
 
 Until they land, `information()` inherits the shipped slack-only
 classification, so items 2 to 4 are complete for interior solutions and misfile
