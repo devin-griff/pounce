@@ -154,7 +154,15 @@ row a fitted variable $i$ gets in each:
 
 The `s` and `z` columns say what each regime looks like, not how it is
 detected: weak activity is the case where both vanish together, and item 0
-classifies on `Σ/q` rather than on either alone. The `Σ` column shows how the
+classifies on `Σ/q` rather than on either alone. Membership runs that rule
+at the reduced fitted block rather than reading item 0's per-coordinate
+status: a fitted parameter in the residual-variable idiom has a zero
+Lagrangian diagonal (its curvature reaches it through the residual
+equalities), so the coordinate rule honestly reports `unidentified` there.
+The reduced `q` is the factor's fitted-block diagonal with the parameter's
+own `Σ` removed; `Σ` itself is retained by the solve, and item 0 reports it
+(`var_sigma`, `row_sigma`). Rows classify the same way, along their normals
+within the block. The `Σ` column shows how the
 barrier diagonal gets where it does, through the slack when the bound is
 inactive and through the multiplier when it is active, and is what using the
 factor's $W$ in place of $H$ would cost.
@@ -171,6 +179,15 @@ of their normals on the fitted block, covariance is
 $2\sigma^2 Z (Z^T H_{FF} Z)^{-1} Z^T$ and information is its pseudo-inverse
 $Z (Z^T H_{FF} Z) Z^T$. No binding rows means $Z = I$ and both collapse to
 the table.
+
+The two constructions split by the size of `Σ`. On the free block `Σ` is at
+most the curvature's own scale, so the correction is a benign subtraction
+off the factor's reduced Hessian; on the pinned rows `Σ` is `z²/μ` and the
+subtraction cancels, which is what reserves the dense exact-Hessian
+construction for $S$. A binding row's barrier weight needs no removal on
+the projected directions at all: $Z^T a = 0$ annihilates it exactly. Until
+item 2 lands, the per-row conditional-information scalar comes off the
+factor by subtraction and carries `log10(Σ/q)` fewer digits.
 
 The last two rows warn as well as return: `ambiguous` that re-solving
 tighter will settle it, which works because the drift into the band is
@@ -337,8 +354,9 @@ a weakly active bound exactly as `covariance()` does now.
   against `covariance()`'s free block. A symmetric difference there returns the
   barrier's smoothing value rather than either true one-sided derivative, so it
   passes while hiding the active-set change; only the one-sided pair shows the
-  two disagree. Run with `bound_relax_factor = 0`, or the slacks being
-  classified are not distances to the user's bounds.
+  two disagree. The declaration-triggered pyomo solve sets
+  `bound_relax_factor = 0` itself, so the slacks being classified are
+  distances to the user's bounds.
 - `information()` on a problem where the solve reports non-zero
   `kkt_perturbations`: the inertia-correction guardrail fires, and the returned
   block differs from the unregularized one by the isotropic `δ_w` and nothing
