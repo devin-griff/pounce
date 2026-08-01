@@ -222,6 +222,18 @@ disposition, so the two spellings of the same limit agree
 (jkitchin/pounce#362) in the returned matrices, not only in item 0's
 classification.
 
+The restriction is honest only while the row's support outside the
+fitted block is pinned (pin columns cannot move and count as inside).
+A binding row that reaches the fitted block through FREE eliminated
+variables pins a direction the restricted normal cannot represent:
+`a + r_1 <= cap` with `r_1 = y_1 - a - b x_1` pins a `b`-direction
+while the restricted normal reads `e_a`, and the reduced-level ratio is
+equally blind, since the row's barrier weight lands through the
+elimination away from the restricted direction. Such a row takes item
+0's raw classification, is kept unprojected, and warns explicitly; its
+general treatment is the reduced normal through the elimination, which
+belongs with item 2's machinery.
+
 **2. `information()`, the un-inverted sibling of `covariance()`.** Returns the
 reduced Hessian over the block, formed as the Schur complement onto the
 block's rows off the held factor rather than by inverting the covariance.
