@@ -124,9 +124,9 @@ review of #371 measured an exactly-active row classifying `inactive` at
 row coefficient 1000. The merged report is USER-SPACE indexed (a
 `make_parameter`-removed variable reports `fixed` at its own index, an
 equality row `equality`) and exports `var_sigma`/`row_sigma` and
-`row_normal(j)` in natural units — classification runs on the solver's
-scaled quantities (the ratio is scale-invariant), the exports follow the
-sensitivity-output contract — which is what item 1 consumes.
+`row_normal(j)` in natural units: classification runs on the solver's
+scaled quantities (the ratio is scale-invariant), the exports follow
+the sensitivity-output contract, and item 1 consumes them.
 
 It requires `bound_relax_factor = 0` and checks it rather than documenting
 it, since the shipped default lets a converged primal sit outside its bound
@@ -222,9 +222,8 @@ tracks `df` or `d_scale`. And the Gauss-Newton path needs no `Σ`
 correction at all, by an exact identity: the residual rows of the
 K-inverse columns are $J$ times the W-based parameter sensitivities,
 $Z_r = J M$, so $Z_r M^{-1} = J$ and the factor's barrier weight cancels
-regardless of `Σ` — the Lagrangian branch corrects $R_W$ because it uses
-the W-based reduced Hessian, while Gauss-Newton rebuilds from the exact
-$J$.
+regardless of `Σ`. The Lagrangian branch corrects $R_W$ because it uses
+the W-based reduced Hessian; Gauss-Newton rebuilds from the exact $J$.
 
 The last two rows warn as well as return: `ambiguous` that re-solving
 tighter will settle it, which works because the drift into the band is
