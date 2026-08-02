@@ -37,7 +37,14 @@ not know about in advance.
 
 ## Where we are
 
-v0.9 ships `covariance()` (in `pyomo-pounce/pyomo_pounce/sens.py`). You
+Items 0 and 1 are MERGED (jkitchin/pounce#371 and #436): the activity
+classifier ships in the Rust core as `Solver.classify_activity()` plus
+`Solver.row_normal()`, and `covariance()` takes its membership from it,
+keeps a weakly active parameter at its true variance, and projects
+binding rows. The paragraphs below describe v0.9 as the baseline the
+roadmap was written against; items 2 to 4 remain.
+
+v0.9 shipped `covariance()` (in `pyomo-pounce/pyomo_pounce/sens.py`). You
 `declare_fitted` a set of free variables, solve, and `covariance(model)`
 returns their asymptotic covariance: the scaled parameter block of the
 inverse KKT matrix, $2\sigma^2 (K^{-1})_{pp}$, where $\sigma^2$ is the residual
@@ -89,13 +96,15 @@ and each inequality row is in, returned with the matrix by both accessors.
 classify(i):                          # a bounded variable, or an inequality row
     Σ = z/s, summed over whichever sides exist
     q = |H_ii|                                  variable: curvature in that coordinate
-        ∇gᵢᵀ H ∇gᵢ / ‖∇gᵢ‖²                     row: curvature along the normal
+        |∇gᵢᵀ H ∇gᵢ| / ‖∇gᵢ‖⁴                   row: see below
 
     if q < sqrt(eps_machine) * max(1, max_j |H_jj|):
                                       return unidentified, sign of q's value
     r = Σ / q
 
-    if μ > 1e-4:                      # the μ-edges have closed inside the band
+    if μ > 1e-4:                      # the μ-edges thin toward the band
+                                      # (they meet it at μ = 1e-2); only
+                                      # the two clear calls are made
         return inactive         if r < 1e-1
         return strongly active  if r > 1e1
         return ambiguous
@@ -106,14 +115,31 @@ classify(i):                          # a bounded variable, or an inequality row
     return ambiguous                  # in a gap between the band and an edge
 ```
 
+The row denominator carries the fourth power so `r` is invariant to
+rescaling the row: `d → c·d` sends `Σ → Σ/c²` while curvature along the
+unit normal is unchanged, and `‖∇g‖⁴` restores the balance (equivalently,
+the geometric weight `Σ‖∇g‖²` against curvature along the unit normal).
+This also absorbs the solver's per-row `d_scale`; without it, the second
+review of #371 measured an exactly-active row classifying `inactive` at
+row coefficient 1000. The merged report is USER-SPACE indexed (a
+`make_parameter`-removed variable reports `fixed` at its own index, an
+equality row `equality`) and exports `var_sigma`/`row_sigma` and
+`row_normal(j)` in natural units — classification runs on the solver's
+scaled quantities (the ratio is scale-invariant), the exports follow the
+sensitivity-output contract — which is what item 1 consumes.
+
 It requires `bound_relax_factor = 0` and checks it rather than documenting
 it, since the shipped default lets a converged primal sit outside its bound
 and a user hits that by doing nothing. Two more conditions are checked on
 every call, not only in the tests: `s·z` away from `μ`, meaning the point is
-off the central path or the bound was relaxed, and `Σ_i/|H_ii|` non-negligible
+off the central path or the bound was relaxed, and `Σ_i/|H_ii| > 100μ`
 on a variable classified inactive, meaning barrier curvature survived where
 none should be (a weakly active variable is kept with ratio near one by
-design, so the check excludes it).
+design, so the check excludes it). The contamination threshold is
+μ-relative because `inactive` means `r = O(μ)`: a fixed constant can
+never sit below the inactive edge `√μ` at any converged μ, which the
+second review of #371 showed made the earlier fixed floor structurally
+dead.
 
 Why it is shaped that way:
 
@@ -188,6 +214,17 @@ construction for $S$. A binding row's barrier weight needs no removal on
 the projected directions at all: $Z^T a = 0$ annihilates it exactly. Until
 item 2 lands, the per-row conditional-information scalar comes off the
 factor by subtraction and carries `log10(Σ/q)` fewer digits.
+
+Two mechanism facts the implementation settled (merged in #436). The
+subtraction composes without scale factors because the classifier's
+exports are natural units at the boundary; nothing in the pyomo layer
+tracks `df` or `d_scale`. And the Gauss-Newton path needs no `Σ`
+correction at all, by an exact identity: the residual rows of the
+K-inverse columns are $J$ times the W-based parameter sensitivities,
+$Z_r = J M$, so $Z_r M^{-1} = J$ and the factor's barrier weight cancels
+regardless of `Σ` — the Lagrangian branch corrects $R_W$ because it uses
+the W-based reduced Hessian, while Gauss-Newton rebuilds from the exact
+$J$.
 
 The last two rows warn as well as return: `ambiguous` that re-solving
 tighter will settle it, which works because the drift into the band is
