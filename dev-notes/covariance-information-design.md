@@ -6,8 +6,9 @@ uncertainty subsystem as it stands: `covariance()` and
 block selection both accessors take, and `retain_kkt()`. Everything
 is computed from ONE ordinary solve: the solver factorizes the KKT
 matrix to solve the NLP, the subsystem keeps that factorization, and
-every question below is a backsolve against it; nothing here uses a
-second solve, finite differencing, or a perturbed re-solve.
+every question below is a backsolve or a Hessian product against
+it; nothing here uses a second solve, finite differencing, or a
+perturbed re-solve.
 
 User-facing documentation lives in `docs/src/sensitivity.md`; demo
 notebooks 31 and 32 demonstrate the whole surface. This file records
@@ -73,8 +74,9 @@ wherever both appear.
 
 `wrt=` selects the block; omitted, it is the declared fitted set and
 the accessors behave exactly as before `wrt=` existed. `wrt=`
-accepts the following forms, normalized to an ordered duplicate-free
-list:
+accepts the following forms, normalized to an ordered list; a
+repeated member is an error, since a duplicated coordinate makes the
+block singular by construction:
 
 - a Var, scalar or indexed (every member);
 - an indexed slice (`m.x[2, :]`);
@@ -157,8 +159,9 @@ Lagrangian form routes over block shapes as follows:
 | block | construction |
 |---|---|
 | parameterizes the constraint manifold (size = degrees of freedom) | direct tangent, `R = T^T H T` |
-| proper sub-block of the fitted set | Schur complement of the exact tangent R over the fitted block: free outside members profiled out, pinned ones conditioned on; no covariance inverted, a pinned member costs no digits |
-| other within-count block | corrected reduction off the factor; benign for free coordinates, whose slice carries no barrier term |
+| proper sub-block of a square fitted set | Schur complement of the exact tangent R over the fitted block: free outside members profiled out, pinned ones conditioned on; no covariance inverted, a pinned member costs no digits |
+| other within-count EXPLICIT block | corrected reduction off the factor; benign for free coordinates, whose slice carries no barrier term |
+| default fitted block outside the square structure | raises an error suggesting `hessian="gauss-newton"`, which does not need the structure |
 | rank-deficient | no information matrix exists; raises an error pointing to `covariance()` |
 
 Fitted-level binding rows decline the Schur route with a warning:
