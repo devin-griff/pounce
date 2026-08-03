@@ -6,15 +6,15 @@ uncertainty subsystem as it stands: `covariance()` and
 block selection both accessors take, and `retain_kkt()`. Everything
 is computed from ONE ordinary solve: the solver factorizes the KKT
 matrix to solve the NLP, the subsystem keeps that factorization, and
-every question below is a backsolve against it. No second solves, no
-finite differencing, no perturbed re-solves.
+every question below is a backsolve against it; nothing here uses a
+second solve, finite differencing, or a perturbed re-solve.
 
 User-facing documentation lives in `docs/src/sensitivity.md`; demo
-notebooks 31 and 32 walk the surface end to end. This file records
+notebooks 31 and 32 demonstrate the whole surface. This file records
 the constructions and why they are what they are.
 
-Notation: `Σ_i = z_i/s_i` summed over whichever bound sides exist is
-the barrier diagonal, $H$ the Lagrangian Hessian, $W = H + \Sigma$
+Throughout, `Σ_i = z_i/s_i` summed over whichever bound sides exist
+is the barrier diagonal, $H$ the Lagrangian Hessian, $W = H + \Sigma$
 the factor's barrier-augmented block, $F$ the free members of the
 block, $A$ the pinned ones, and
 $S = H_{AA} - H_{AF} H_{FF}^{-1} H_{FA}$ the reduction onto $A$.
@@ -40,7 +40,7 @@ $S = H_{AA} - H_{AF} H_{FF}^{-1} H_{FA}$ the reduction onto $A$.
 | `retain_kkt()` only | yes | error, no default | over T |
 | `retain_kkt()` + `declare_fitted(S)` | yes | over S | over T |
 
-One more retention rule: a `Covariance` or `Information` result whose
+One more rule completes retention: a `Covariance` or `Information` result whose
 `conditioned_on` has not been read keeps the session, and with it the
 factor, alive until first access.
 
@@ -63,8 +63,8 @@ behind.
 The spaces coincide exactly when no variable is fixed, which makes
 confusing them invisible until it silently reads a NEIGHBORING
 variable's numbers. `Solver.primal_rows` maps full-x to factor rows
-(`None` for removed variables, which the accessors refuse with an
-actionable message); `session.scatter_x` maps factor-space vectors
+(`None` for removed variables, on which the accessors raise an
+error naming the variable); `session.scatter_x` maps factor-space vectors
 back. Every factor index routes through this pair, and the two
 spaces are kept in separately named variables (`rows` vs `krows`)
 wherever both appear.
@@ -72,8 +72,9 @@ wherever both appear.
 ## The block and its covariance
 
 `wrt=` selects the block; omitted, it is the declared fitted set and
-the accessors behave exactly as before `wrt=` existed. Accepted
-forms, normalized to an ordered duplicate-free list:
+the accessors behave exactly as before `wrt=` existed. `wrt=`
+accepts the following forms, normalized to an ordered duplicate-free
+list:
 
 - a Var, scalar or indexed (every member);
 - an indexed slice (`m.x[2, :]`);
@@ -118,8 +119,8 @@ columns are `J M`, so
 and the factor's barrier weight cancels regardless of its size. The
 product is formed over the whole block and sliced afterwards, so
 pinned members still have rows when S is assembled. Gauss-Newton is
-structurally positive semidefinite (what MHE arrival costs and
-scipy-parity consumers need); the Lagrangian default is the observed
+structurally positive semidefinite, which MHE arrival costs and
+consumers wanting scipy's `curve_fit` numbers need; the Lagrangian default is the observed
 information, exact at the solution. They agree for linear models and
 in the small-residual limit, and differ by O(residual x curvature)
 otherwise. The heteroscedastic sandwich uses the same recovered
@@ -139,7 +140,7 @@ with H applied through `Solver.hessian_vec` (exact Lagrangian
 Hessian times a user-space vector, natural units, one product per
 block column; factor-space tangents scatter to full-x first). The
 barrier weight cancels multiplicatively inside the recovery instead
-of being subtracted off. Two measured facts bound its accuracy:
+of being subtracted off. Measurement puts two limits on its accuracy:
 
 - machine-exact for equality and variable-bound activity, including
   pinned variables at `Sigma/q ~ 3e10` where a subtraction loses ten
@@ -151,14 +152,14 @@ of being subtracted off. Two measured facts bound its accuracy:
 
 The recovery requires the square estimation structure, checked as
 `n_var - n_eq == n_params` before any tangent is formed. The
-Lagrangian routing over block shapes:
+Lagrangian form routes over block shapes as follows:
 
 | block | construction |
 |---|---|
-| parameterizes the manifold (size = degrees of freedom) | direct tangent, `R = T^T H T` |
+| parameterizes the constraint manifold (size = degrees of freedom) | direct tangent, `R = T^T H T` |
 | proper sub-block of the fitted set | Schur complement of the exact tangent R over the fitted block: free outside members profiled out, pinned ones conditioned on; no covariance inverted, a pinned member costs no digits |
 | other within-count block | corrected reduction off the factor; benign for free coordinates, whose slice carries no barrier term |
-| rank-deficient | no information matrix exists; raises toward `covariance()` |
+| rank-deficient | no information matrix exists; raises an error pointing to `covariance()` |
 
 Fitted-level binding rows decline the Schur route with a warning:
 their projection does not compose simply with marginalization.
@@ -209,9 +210,10 @@ classify(i):                          # a bounded variable, or an inequality row
   floor is structurally dead there.
 
 Block members are classified at the REDUCED level, because a fitted
-parameter in the residual idiom has zero raw curvature: the
+parameter in the residual-variable idiom (the misfit carried in
+declared residual variables) has zero raw curvature: the
 effective curvature is `q_red = |diag(inv(M)) - Σ|`, clamped to a
-cancellation floor rather than refused (a huge Σ cancelling inside
+cancellation floor rather than rejected (a huge Σ cancelling inside
 q_red would otherwise misfile a strongly active entry), and the same
 edges make the call. Variables OUTSIDE the block are classified per
 candidate as a singleton block by the identical rule, one backsolve
@@ -221,8 +223,8 @@ near-bound variables pay; this is scale-invariant where any absolute
 
 ## Dispositions
 
-What each accessor returns for a block member, given the
-classification. Both return a matrix over the whole block; the
+The table gives what each accessor returns for a block member,
+given the classification. Both return a matrix over the whole block; the
 columns are the row member $i$ gets in each:
 
 | status | `s` | `z` | `Σ` as `μ → 0` | $i$ in | `covariance()` row | `information()` row |
@@ -235,8 +237,8 @@ columns are the row member $i$ gets in each:
 
 The `s` and `z` columns say what each regime looks like, not how it
 is detected: weak activity is the case where both vanish together,
-and classification runs on `Σ/q` rather than on either alone. Around
-the table:
+and classification runs on `Σ/q` rather than on either alone. The
+remaining dispositions do not fit a table row:
 
 - A weakly active member is kept free at its TRUE variance: its own
   barrier weight is subtracted from the reduced block, so it reports
@@ -253,10 +255,11 @@ the table:
   in the warning (tangent route inside the square structure, factor
   subtraction outside it).
 - A row whose support leaves the block cannot be represented by a
-  restricted normal: warned, left unprojected, raw classification as
-  its honest status.
+  restricted normal: it is warned about and left unprojected, with
+  the raw classification as its reported status.
 - An indefinite Lagrangian information block is returned as computed
-  with a warning naming Gauss-Newton: refusing would withhold the
+  with a warning naming Gauss-Newton: raising an error would
+  withhold the
   finding that the point is not a minimum or the model is
   over-parameterized.
 - Diagnostics name what they touch: fitted parameters on the default
@@ -271,8 +274,8 @@ build-dependent, so no structural condition is guarded by catching
 
 - Explicit blocks are gated by count (more coordinates than the fit
   has degrees of freedom) and then by a rank test on M
-  (fp-detectable dependence; a duplicated design point is the
-  canonical case), each path with its own message.
+  (dependence detectable in floating point; a duplicated design
+  point is the canonical case), each path with its own message.
 - A rank-deficient block is the prediction-band case:
   `covariance()` returns the homoscedastic Lagrangian marginal
   `2 sigma^2 M` with membership handling bypassed; `information()`,
@@ -315,7 +318,8 @@ build-dependent, so no structural condition is guarded by catching
   repeatedly hidden bugs: objective scaling engaged with `df != 1`
   asserted, and an inert fixed variable ahead of the block in `.col`
   order.
-- Structural refusals are tested through fixtures that reach them
+- The structural error paths are tested through fixtures that reach
+  them
   deterministically (bit-identical coordinates, not
   near-singularity), so the tests do not inherit LAPACK's
   build-dependence.
